@@ -58,6 +58,8 @@ def implb (a b : Bool) : Bool := !a || b
 theorem implb_eq_true {a b : Bool} : implb a b = true ↔ (a = true → b = true) := by
   cases a <;> cases b <;> simp [implb]
 
+theorem implb_self (a : Bool) : implb a a = true := by cases a <;> rfl
+
 /-- A "prefix" relation on predicate lists: each predicate of `l₂` entails the
 corresponding predicate of `l₁` (Coq `prefix_pred`). -/
 inductive PrefixPred {st : Type} : List (st → Bool) → List (st → Bool) → Prop
@@ -76,12 +78,21 @@ theorem PrefixPred.trans {st : Type} {l1 l2 l3 : List (st → Bool)}
       have a := hf2f1 x; have b := hf3f2 x
       revert a b; cases f1 x <;> cases f2 x <;> cases f3 x <;> simp [implb]
 
+theorem PrefixPred.inv_cons {st : Type} {f1 f2 : st → Bool} {l1 l2 : List (st → Bool)}
+    (h : PrefixPred (f1 :: l1) (f2 :: l2)) :
+    (∀ x, implb (f2 x) (f1 x) = true) ∧ PrefixPred l1 l2 := by
+  cases h with
+  | cons _ _ himpl h' => exact ⟨himpl, h'⟩
+
 variable [A : Automaton]
 
 /-! ### State annotations -/
 
 /-- The singleton predicate for states (Coq `singleton_state_pred`). -/
 def singletonStatePred (s : A.State) : A.State → Bool := fun s' => compareEqb s s'
+
+theorem singletonStatePred_self (s : A.State) : singletonStatePred s s = true :=
+  compareEqb_refl s
 
 /-- `past_state_of_non_init_state`, extended to all states (Coq
 `past_state_of_state`). -/
@@ -196,6 +207,12 @@ def reduceOk : Prop :=
 /-- The automaton is safe (Coq `safe`). -/
 def safe : Prop :=
   shiftHeadSymbs ∧ gotoHeadSymbs ∧ shiftPastState ∧ gotoPastState ∧ reduceOk
+
+theorem shiftHeadSymbs_of_safe (h : safe) : shiftHeadSymbs := h.1
+theorem gotoHeadSymbs_of_safe (h : safe) : gotoHeadSymbs := h.2.1
+theorem shiftPastState_of_safe (h : safe) : shiftPastState := h.2.2.1
+theorem gotoPastState_of_safe (h : safe) : gotoPastState := h.2.2.2.1
+theorem reduceOk_of_safe (h : safe) : reduceOk := h.2.2.2.2
 
 /-! ### The boolean validator -/
 
