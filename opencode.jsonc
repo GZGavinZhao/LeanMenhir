@@ -3,7 +3,7 @@
   "mcp": {
     "lean-lsp-mcp": {
       "type": "local",
-      "command": ["uvx", "lean-lsp-mcp"],
+      "command": ["uvx", "lean-lsp-mcp", "--repl"],
       "enabled": true
     }
   }
