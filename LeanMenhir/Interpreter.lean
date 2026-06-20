@@ -173,7 +173,7 @@ theorem pop_state_valid {R : Type} :
     ∀ (symbolsToPop : List (Symbol A.Terminal A.Nonterminal)) (stk : Stack)
       (hp : Prefix symbolsToPop (symbStackOfStack stk))
       (action : arrowsRight R (symbolsToPop.map A.symbol_semantic_type))
-      (lpred : List (A.State → Bool)) (hpp : PrefixPred lpred (stateStackOfStack init stk)),
+      (lpred : List (A.State → Bool)) (_hpp : PrefixPred lpred (stateStackOfStack init stk)),
       StateValidAfterPop (stateOfStack init (pop symbolsToPop stk hp action).1) symbolsToPop lpred := by
   intro symbolsToPop
   induction symbolsToPop with

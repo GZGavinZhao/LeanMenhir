@@ -19,7 +19,7 @@ instance instComparableFin {n : Nat} : Comparable (Fin n) where
   compare_antisym a b := by
     show (Fin.cmp a b).swap = Fin.cmp b a
     unfold Fin.cmp
-    split_ifs <;> first | rfl | (exfalso; omega) | simp [Ordering.swap]
+    split_ifs <;> first | rfl | (exfalso; omega)
   compare_trans a b c o hab hbc := by
     simp only [Fin.cmp] at hab hbc ⊢
     split_ifs at hab hbc ⊢ <;>
@@ -33,7 +33,8 @@ instance instComparableLeibnizEqFin {n : Nat} : ComparableLeibnizEq (Fin n) wher
   compare_eq a b h := by
     apply Fin.ext
     simp only [show Comparable.compare a b = Fin.cmp a b from rfl, Fin.cmp] at h
-    split_ifs at h <;> simp_all
+    split_ifs at h
+    simp_all
 
 instance instEnumerableFin {n : Nat} : Enumerable (Fin n) where
   allList := List.finRange n

@@ -105,6 +105,7 @@ variable (Val : Type) (actions : Nat → List Val → Val)
 
 /-- Build a genuine `Automaton` from the (untrusted) index-only tables `g`, with
 monomorphic semantic values `Val` and per-production actions `actions`. -/
+@[reducible]
 def automatonOfTables : Automaton where
   Terminal := Fin (g.numTerm + 1)
   Nonterminal := Fin (g.numNonterm + 1)
