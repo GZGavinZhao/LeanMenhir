@@ -1,3 +1,3 @@
 -- This module serves as the root of the `LeanMenhir` library.
--- Import modules here that should be built as part of the library.
-import LeanMenhir.Basic
+-- A verified LR(1) parser interpreter + validator, ported from `coq-menhirlib`.
+import LeanMenhir.Alphabet
