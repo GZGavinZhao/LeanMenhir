@@ -27,8 +27,10 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
 
 ## Milestone status
 
-- [ ] M0 — Skeleton + `Alphabet.lean`
-- [ ] M1 — `Grammar.lean` + `Automaton.lean` (definitions, `parse_tree`)
+- [x] M0 — Skeleton + `Alphabet.lean`
+- [~] M1 — `Grammar.lean` done (Symbol + Alphabet instances, `Grammar` class,
+  `ParseTree`/`ParseTreeList`, `ptSem`/`ptlSem`, `ptSize`/`ptlSize`). A trivial
+  grammar instance typechecks and `ptSize`/`ptSem` evaluate. `Automaton.lean` next.
 - [ ] M2 — `Interpreter.lean` (executable)
 - [ ] M3 — Soundness (`Validator/Classes`, `Validator/Safe`, `Interpreter/Correct`, `Main.parse_correct`)
 - [ ] M4 — Completeness + unambiguity
