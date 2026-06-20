@@ -31,6 +31,32 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
 - [~] M1 — `Grammar.lean` done (Symbol + Alphabet instances, `Grammar` class,
   `ParseTree`/`ParseTreeList`, `ptSem`/`ptlSem`, `ptSize`/`ptlSize`). A trivial
   grammar instance typechecks and `ptSize`/`ptSem` evaluate. `Automaton.lean` next.
+
+## Current state (summary)
+
+- **Verified runtime — DONE, no `sorry`:** `Alphabet`, `Grammar`, `Automaton`,
+  `Validator/Classes`, `Validator/Safe` (incl. `safe_is_validator`),
+  `Interpreter` (`pop`, `reduceStep`, `step`, `parseFix`, `parse` + all stack-
+  invariant lemmas).
+- **Soundness:** `pop_spec_ptl` and `reduceStep_sound` proved; `parse_correct`
+  proved modulo `parseFix_sound`. Remaining `sorry`s: `step_sound`,
+  `parseFix_sound` (mechanical inductions feeding `parse_correct`).
+- **Native LR(1) generator (untrusted, `partial def`) — WORKING:**
+  `Generator/FinAlphabet` (Fin alphabets), `Generator/Tables`
+  (`GenTables` + `automatonOfTables`: rebuilds the dependent `Automaton` from
+  index data, reconstructing `Shift_act`/`goto` proofs via `DecidableEq`),
+  `Generator/LR1` (canonical LR(1): nullable/first, closure/goto, state
+  collection, action/goto tables, stack-shape fixpoints for `past_symb`/
+  `past_state`).
+- **End-to-end demo — WORKING:** `Examples/Arith` generates a parser for the
+  left-recursive `E → E + num | num` grammar; `isSafe` is discharged by
+  `native_decide`, and `parse` of `1 + 2 + 3` gives `6` (the case PEG/recursive-
+  descent backends get wrong). Bad input is rejected. All checked by
+  `native_decide` at build time.
+
+Key insight: `past_state` annotations are **one level longer** than `past_symb`
+(the state-stack has one more element than the symbol-stack — the validator pins
+the state reached after popping a whole RHS).
 - [ ] M2 — `Interpreter.lean` (executable)
 - [ ] M3 — Soundness (`Validator/Classes`, `Validator/Safe`, `Interpreter/Correct`, `Main.parse_correct`)
 - [ ] M4 — Completeness + unambiguity
