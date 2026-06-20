@@ -39,6 +39,11 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
 ## Notes / gotchas
 
 - `CompOpp` ↦ `Ordering.swap`; `comparison {Eq,Lt,Gt}` ↦ `Ordering {eq,lt,gt}`.
-- Coq `Finite.all_list` ↦ `Finset.univ.toList` (Mathlib `Fintype`).
-- License: `coq-menhirlib` is LGPL-3.0-or-later; this port is a derivative work
-  and must carry the same license + attribution (handoff §7).
+- Coq `Finite.all_list` ↦ explicit computable `Enumerable.allList`.
+- **No `thunkP`/`reprove`/`cast` machinery needed.** Coq used it so `vm_compute`
+  wouldn't reduce proof terms; Lean erases `Prop` at compile time, so the
+  interpreter carries equality proofs directly and uses `cast`/`▸`. Casts are
+  no-ops at runtime, so `#eval parse` still works; the validators are pure `Bool`
+  (no casts) so `decide`/`native_decide` work too.
+- Validators are defined explicitly as `Bool` (not synthesized from the
+  `IsValidator` typeclass as in Coq), with hand proofs `isX = true → X`.
