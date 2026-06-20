@@ -49,15 +49,29 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
   `Generator/LR1` (canonical LR(1): nullable/first, closure/goto, state
   collection, action/goto tables, stack-shape fixpoints for `past_symb`/
   `past_state`).
-- **End-to-end demo — WORKING:** `Examples/Arith` generates a parser for the
-  left-recursive `E → E + num | num` grammar; `isSafe` is discharged by
-  `native_decide`, and `parse` of `1 + 2 + 3` gives `6` (the case PEG/recursive-
-  descent backends get wrong). Bad input is rejected. All checked by
-  `native_decide` at build time, and `Main.parse_correct` specialises to it.
+- **End-to-end demos — WORKING (two complementary paths):**
+  - `Examples/Arith` — left-recursive `E → E + num | num`, tables straight from
+    the in-Lean `Grammar0.buildTables` (`partial`, self-contained), safety by
+    `native_decide`. Showcases the fully self-contained generator path.
+  - `Examples/MiniCalc` — the real rocq-minicalc grammar (precedence, parens, a
+    lexer, AST printer): 33-state automaton, tables emitted by `Gen.emitTables`
+    as a concrete literal, safety certified by **kernel `decide`**
+    (`minicalcSafe` axioms = `{propext, Quot.sound}` — *no* `Lean.ofReduceBool`/
+    compiler-trust). Value tests (`1+2*3`, `(1+2)*3`, `1-2-3`, the Coq demo's
+    `12 + 34*x / (48+y)` round-trip, and rejection of `1+`/`(1+2`) run the
+    compiled parser via `native_decide`/`#eval`.
 
-Key insights: `past_state` annotations are **one level longer** than `past_symb`
-(the state-stack has one more element than the symbol-stack); Lean's definitional
-proof-irrelevance lets the dependent eq-proofs (`Shift_act`/cast) be aligned.
+Key insights:
+- `past_state` annotations are **one level longer** than `past_symb` (state-stack
+  has one more element than the symbol-stack).
+- Lean's definitional proof-irrelevance aligns the dependent eq-proofs
+  (`Shift_act`/cast).
+- **Kernel `decide` vs `native_decide`:** kernel `decide` gives a no-compiler-trust
+  certificate but needs *concrete, non-`partial`* tables (so we emit them via
+  `Gen.emitTables`) and a kernel-reducible validator — the one gotcha was
+  `Array.contains` (doesn't kernel-reduce; switched the `past_state` predicate to
+  `Array.toList.contains`). `native_decide` scales to large grammars but trusts
+  the compiler. We offer both.
 
 ## Remaining / future work
 

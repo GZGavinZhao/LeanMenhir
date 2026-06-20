@@ -290,6 +290,57 @@ partial def buildTables : GenTables := Id.run do
   }
 
 end Grammar0
+
+/-! ### Emitting concrete tables as Lean source
+
+The generator is `partial`, so its output does not reduce in the kernel. To get
+a kernel-`decide`-able certificate (no `native_decide` / no compiler-trust
+axiom), we emit the computed `GenTables` as a concrete Lean literal that is then
+checked into the example. Fields are newline-separated (Lean's comma-separated
+struct literals are whitespace-flaky on large nested values). -/
+
+private def emitGSym : GSym → String
+  | .term i => s!".term {i}"
+  | .nonterm i => s!".nonterm {i}"
+
+private def emitGLook : GLookahead → String
+  | .shift n => s!".shift {n}"
+  | .reduce n => s!".reduce {n}"
+  | .fail => ".fail"
+
+private def emitGAction : GAction → String
+  | .defaultReduce n => s!".defaultReduce {n}"
+  | .lookahead a => "(.lookahead #[" ++ ", ".intercalate (a.toList.map emitGLook) ++ "])"
+
+private def emitArr {α : Type} (f : α → String) (a : Array α) : String :=
+  "#[" ++ ", ".intercalate (a.toList.map f) ++ "]"
+
+private def emitNatArr (a : Array Nat) : String := emitArr toString a
+private def emitOptGSym : Option GSym → String
+  | none => "none" | some s => s!"(some ({emitGSym s}))"
+
+/-- Emit a `GenTables` as a `def name : GenTables := …` source string. -/
+def emitTables (name : String) (g : GenTables) : String :=
+  let line (k v : String) := s!"    {k} := {v}\n"
+  let arrArr {α} (f : α → String) (aa : Array (Array α)) : String :=
+    emitArr (emitArr f) aa
+  "def " ++ name ++ " : Gen.GenTables :=\n  {\n"
+  ++ line "numTerm" (toString g.numTerm)
+  ++ line "numNonterm" (toString g.numNonterm)
+  ++ line "numProd" (toString g.numProd)
+  ++ line "numStates" (toString g.numStates)
+  ++ line "startNonterm" (toString g.startNonterm)
+  ++ line "prodLhs" (emitNatArr g.prodLhs)
+  ++ line "prodRhsRev" (arrArr emitGSym g.prodRhsRev)
+  ++ line "incoming" (emitArr emitOptGSym g.incoming)
+  ++ line "action" (emitArr emitGAction g.action)
+  ++ line "goto" (emitArr (emitArr (fun (o : Option Nat) => match o with
+        | none => "none" | some n => s!"(some {n})")) g.goto)
+  ++ line "pastSymb" (arrArr emitGSym g.pastSymb)
+  ++ line "pastStateSets" (emitArr (emitArr emitNatArr) g.pastStateSets)
+  ++ line "nullable" (emitArr (fun b => if b then "true" else "false") g.nullable)
+  ++ line "first" (emitArr emitNatArr g.first)
+  ++ "  }\n"
+
 end Gen
 end LeanMenhir
-

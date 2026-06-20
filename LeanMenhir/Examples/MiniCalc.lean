@@ -1,0 +1,181 @@
+/-
+End-to-end MiniCalc example (ported from `refs/menhir/demos/rocq-minicalc`).
+
+A real arithmetic grammar with precedence, associativity, and parentheses:
+
+    parse_expr : p_expr EOF
+    p_expr   : p_factor | p_expr ADD p_factor | p_expr SUB p_factor
+    p_factor : p_atom   | p_factor MUL p_atom | p_factor DIV p_atom
+    p_atom   : ID | NUM | LPAREN p_expr RPAREN
+
+The LR(1) tables below were produced by our *untrusted* generator
+(`Grammar0.buildTables`, emitted via `Gen.emitTables`) and are certified here by
+the verified safety validator using **kernel `decide`** — so the certificate
+carries no compiler-trust axiom (`Lean.ofReduceBool`), only the kernel.
+
+LGPL-3.0-or-later (derivative of coq-menhirlib).
+-/
+import LeanMenhir.Generator.LR1
+import Mathlib.Data.Stream.Init
+
+namespace LeanMenhir.Examples.MiniCalc
+
+open LeanMenhir LeanMenhir.Gen
+
+/-- The AST (`MiniCalc.v`, `Ast.expr`). Used as the monomorphic semantic value. -/
+inductive Expr where
+  | num : Nat → Expr
+  | var : String → Expr
+  | add : Expr → Expr → Expr
+  | sub : Expr → Expr → Expr
+  | mul : Expr → Expr → Expr
+  | div : Expr → Expr → Expr
+deriving DecidableEq, Repr, Inhabited, BEq
+
+/-- The source grammar (terminals ADD0 SUB1 MUL2 DIV3 LPAREN4 RPAREN5 EOF6 NUM7
+ID8; nonterminals parse_expr0 p_expr1 p_factor2 p_atom3). The `miniTables` below
+are `grammar.buildTables` emitted via `Gen.emitTables`; regenerate with:
+`#eval IO.println (Gen.emitTables "miniTables" grammar.buildTables)`. -/
+def grammar : Grammar0 where
+  numTerm := 9
+  numNonterm := 4
+  start := 0
+  eof := 6
+  prods := #[
+    (0, #[.nonterm 1, .term 6]),                 -- parse_expr → p_expr EOF
+    (1, #[.nonterm 2]),                          -- p_expr → p_factor
+    (1, #[.nonterm 1, .term 0, .nonterm 2]),     -- p_expr → p_expr ADD p_factor
+    (1, #[.nonterm 1, .term 1, .nonterm 2]),     -- p_expr → p_expr SUB p_factor
+    (2, #[.nonterm 3]),                          -- p_factor → p_atom
+    (2, #[.nonterm 2, .term 2, .nonterm 3]),     -- p_factor → p_factor MUL p_atom
+    (2, #[.nonterm 2, .term 3, .nonterm 3]),     -- p_factor → p_factor DIV p_atom
+    (3, #[.term 8]),                             -- p_atom → ID
+    (3, #[.term 7]),                             -- p_atom → NUM
+    (3, #[.term 4, .nonterm 1, .term 5])         -- p_atom → LPAREN p_expr RPAREN
+  ]
+
+/-- Terminals: ADD=0 SUB=1 MUL=2 DIV=3 LPAREN=4 RPAREN=5 EOF=6 NUM=7 ID=8.
+Nonterminals: parse_expr=0 p_expr=1 p_factor=2 p_atom=3. (Generated, untrusted.) -/
+def miniTables : Gen.GenTables :=
+  {
+    numTerm := 9
+    numNonterm := 4
+    numProd := 10
+    numStates := 33
+    startNonterm := 0
+    prodLhs := #[0, 1, 1, 1, 2, 2, 2, 3, 3, 3]
+    prodRhsRev := #[#[.term 6, .nonterm 1], #[.nonterm 2], #[.nonterm 2, .term 0, .nonterm 1], #[.nonterm 2, .term 1, .nonterm 1], #[.nonterm 3], #[.nonterm 3, .term 2, .nonterm 2], #[.nonterm 3, .term 3, .nonterm 2], #[.term 8], #[.term 7], #[.term 5, .nonterm 1, .term 4]]
+    incoming := #[none, (some (.nonterm 1)), (some (.nonterm 3)), (some (.nonterm 2)), (some (.term 8)), (some (.term 7)), (some (.term 4)), (some (.nonterm 1)), (some (.nonterm 3)), (some (.nonterm 2)), (some (.term 8)), (some (.term 7)), (some (.term 4)), (some (.nonterm 1)), (some (.term 1)), (some (.term 0)), (some (.term 5)), (some (.nonterm 2)), (some (.term 3)), (some (.term 2)), (some (.nonterm 3)), (some (.nonterm 3)), (some (.nonterm 2)), (some (.term 5)), (some (.term 3)), (some (.term 2)), (some (.nonterm 3)), (some (.nonterm 3)), (some (.term 1)), (some (.term 0)), (some (.term 6)), (some (.nonterm 2)), (some (.nonterm 2))]
+    action := #[(.lookahead #[.fail, .fail, .fail, .fail, .shift 6, .fail, .fail, .shift 5, .shift 4]), (.lookahead #[.shift 29, .shift 28, .fail, .fail, .fail, .fail, .shift 30, .fail, .fail]), .defaultReduce 4, (.lookahead #[.reduce 1, .reduce 1, .shift 25, .shift 24, .fail, .fail, .reduce 1, .fail, .fail]), .defaultReduce 7, .defaultReduce 8, (.lookahead #[.fail, .fail, .fail, .fail, .shift 12, .fail, .fail, .shift 11, .shift 10]), (.lookahead #[.shift 15, .shift 14, .fail, .fail, .fail, .shift 23, .fail, .fail, .fail]), .defaultReduce 4, (.lookahead #[.reduce 1, .reduce 1, .shift 19, .shift 18, .fail, .reduce 1, .fail, .fail, .fail]), .defaultReduce 7, .defaultReduce 8, (.lookahead #[.fail, .fail, .fail, .fail, .shift 12, .fail, .fail, .shift 11, .shift 10]), (.lookahead #[.shift 15, .shift 14, .fail, .fail, .fail, .shift 16, .fail, .fail, .fail]), (.lookahead #[.fail, .fail, .fail, .fail, .shift 12, .fail, .fail, .shift 11, .shift 10]), (.lookahead #[.fail, .fail, .fail, .fail, .shift 12, .fail, .fail, .shift 11, .shift 10]), .defaultReduce 9, (.lookahead #[.reduce 2, .reduce 2, .shift 19, .shift 18, .fail, .reduce 2, .fail, .fail, .fail]), (.lookahead #[.fail, .fail, .fail, .fail, .shift 12, .fail, .fail, .shift 11, .shift 10]), (.lookahead #[.fail, .fail, .fail, .fail, .shift 12, .fail, .fail, .shift 11, .shift 10]), .defaultReduce 5, .defaultReduce 6, (.lookahead #[.reduce 3, .reduce 3, .shift 19, .shift 18, .fail, .reduce 3, .fail, .fail, .fail]), .defaultReduce 9, (.lookahead #[.fail, .fail, .fail, .fail, .shift 6, .fail, .fail, .shift 5, .shift 4]), (.lookahead #[.fail, .fail, .fail, .fail, .shift 6, .fail, .fail, .shift 5, .shift 4]), .defaultReduce 5, .defaultReduce 6, (.lookahead #[.fail, .fail, .fail, .fail, .shift 6, .fail, .fail, .shift 5, .shift 4]), (.lookahead #[.fail, .fail, .fail, .fail, .shift 6, .fail, .fail, .shift 5, .shift 4]), .defaultReduce 0, (.lookahead #[.reduce 2, .reduce 2, .shift 25, .shift 24, .fail, .fail, .reduce 2, .fail, .fail]), (.lookahead #[.reduce 3, .reduce 3, .shift 25, .shift 24, .fail, .fail, .reduce 3, .fail, .fail])]
+    goto := #[#[none, (some 1), (some 3), (some 2)], #[none, none, none, none], #[none, none, none, none], #[none, none, none, none], #[none, none, none, none], #[none, none, none, none], #[none, (some 7), (some 9), (some 8)], #[none, none, none, none], #[none, none, none, none], #[none, none, none, none], #[none, none, none, none], #[none, none, none, none], #[none, (some 13), (some 9), (some 8)], #[none, none, none, none], #[none, none, (some 22), (some 8)], #[none, none, (some 17), (some 8)], #[none, none, none, none], #[none, none, none, none], #[none, none, none, (some 21)], #[none, none, none, (some 20)], #[none, none, none, none], #[none, none, none, none], #[none, none, none, none], #[none, none, none, none], #[none, none, none, (some 27)], #[none, none, none, (some 26)], #[none, none, none, none], #[none, none, none, none], #[none, none, (some 32), (some 2)], #[none, none, (some 31), (some 2)], #[none, none, none, none], #[none, none, none, none], #[none, none, none, none]]
+    pastSymb := #[#[], #[], #[], #[], #[], #[], #[], #[.term 4], #[], #[.term 4], #[], #[], #[], #[.term 4], #[.nonterm 1, .term 4], #[.nonterm 1, .term 4], #[.nonterm 1, .term 4], #[.term 0, .nonterm 1, .term 4], #[.nonterm 2], #[.nonterm 2], #[.term 2, .nonterm 2], #[.term 3, .nonterm 2], #[.term 1, .nonterm 1, .term 4], #[.nonterm 1, .term 4], #[.nonterm 2], #[.nonterm 2], #[.term 2, .nonterm 2], #[.term 3, .nonterm 2], #[.nonterm 1], #[.nonterm 1], #[.nonterm 1], #[.term 0, .nonterm 1], #[.term 1, .nonterm 1]]
+    pastStateSets := #[#[], #[#[0]], #[#[28, 29, 0]], #[#[0]], #[#[24, 28, 29, 25, 0]], #[#[24, 28, 29, 25, 0]], #[#[24, 28, 29, 25, 0]], #[#[6], #[24, 28, 29, 25, 0]], #[#[12, 15, 14, 6]], #[#[12, 6], #[6, 14, 18, 19, 15, 12, 24, 28, 29, 25, 0]], #[#[12, 15, 19, 18, 14, 6]], #[#[12, 15, 19, 18, 14, 6]], #[#[12, 15, 19, 18, 14, 6]], #[#[12], #[12, 15, 19, 18, 14, 6]], #[#[13, 7], #[12, 6], #[6, 14, 18, 19, 15, 12, 24, 28, 29, 25, 0]], #[#[13, 7], #[12, 6], #[6, 14, 18, 19, 15, 12, 24, 28, 29, 25, 0]], #[#[13], #[12], #[12, 15, 19, 18, 14, 6]], #[#[15], #[13, 7], #[12, 6], #[6, 14, 18, 19, 15, 12, 24, 28, 29, 25, 0]], #[#[17, 22, 9], #[15, 14, 12, 6]], #[#[17, 22, 9], #[15, 14, 12, 6]], #[#[19], #[17, 22, 9], #[15, 14, 12, 6]], #[#[18], #[17, 22, 9], #[15, 14, 12, 6]], #[#[14], #[13, 7], #[12, 6], #[6, 14, 18, 19, 15, 12, 24, 28, 29, 25, 0]], #[#[7], #[6], #[24, 28, 29, 25, 0]], #[#[31, 32, 3], #[29, 28, 0]], #[#[31, 32, 3], #[29, 28, 0]], #[#[25], #[31, 32, 3], #[29, 28, 0]], #[#[24], #[31, 32, 3], #[29, 28, 0]], #[#[1], #[0]], #[#[1], #[0]], #[#[1], #[0]], #[#[29], #[1], #[0]], #[#[28], #[1], #[0]]]
+    nullable := #[false, false, false, false]
+    first := #[#[8, 7, 4], #[4, 7, 8], #[8, 7, 4], #[4, 7, 8]]
+  }
+
+/-- Semantic actions (`collectArrows` supplies popped values in reverse-RHS
+order: last symbol = index 0). -/
+def actions : Nat → List Expr → Expr
+  | 0, l => l.getD 1 (.num 0)                                -- parse_expr → p_expr EOF
+  | 1, l => l.getD 0 (.num 0)                                -- p_expr → p_factor
+  | 2, l => .add (l.getD 2 (.num 0)) (l.getD 0 (.num 0))     -- p_expr → p_expr + p_factor
+  | 3, l => .sub (l.getD 2 (.num 0)) (l.getD 0 (.num 0))     -- p_expr → p_expr - p_factor
+  | 4, l => l.getD 0 (.num 0)                                -- p_factor → p_atom
+  | 5, l => .mul (l.getD 2 (.num 0)) (l.getD 0 (.num 0))     -- p_factor → p_factor * p_atom
+  | 6, l => .div (l.getD 2 (.num 0)) (l.getD 0 (.num 0))     -- p_factor → p_factor / p_atom
+  | 7, l => l.getD 0 (.num 0)                                -- p_atom → ID
+  | 8, l => l.getD 0 (.num 0)                                -- p_atom → NUM
+  | 9, l => l.getD 1 (.num 0)                                -- p_atom → ( p_expr )
+  | _, _ => .num 0
+
+/-- The verified automaton built from the generated tables. -/
+instance automaton : Automaton := automatonOfTables miniTables Expr actions
+
+/-- The generated tables are safe — certified by **kernel `decide`** (the only
+trusted component is the Lean kernel; no `native_decide`/compiler-trust axiom). -/
+theorem minicalcSafe : Main.safeValidator (A := automaton) () = true := by decide
+
+/-! ### Lexer + end-to-end parsing -/
+
+/-- A very small lexer: digits → `NUM`, letters → `ID`, and the operator/paren
+characters; whitespace is skipped, anything else fails. Token values carry the
+semantic `Expr` leaf (`Ast` value) for `NUM`/`ID`. -/
+partial def lexAux : List Char → Option (List (Fin 10 × Expr))
+  | [] => some []
+  | c :: rest =>
+    if c == ' ' || c == '\t' || c == '\n' then lexAux rest
+    else if c.isDigit then
+      let digs := (c :: rest).takeWhile Char.isDigit
+      let n := digs.foldl (fun acc d => acc * 10 + (d.toNat - 48)) 0
+      (lexAux ((c :: rest).dropWhile Char.isDigit)).map (((7 : Fin 10), Expr.num n) :: ·)
+    else if c.isAlpha then
+      let ids := (c :: rest).takeWhile Char.isAlpha
+      (lexAux ((c :: rest).dropWhile Char.isAlpha)).map (((8 : Fin 10), Expr.var (String.ofList ids)) :: ·)
+    else
+      let single (i : Fin 10) := (lexAux rest).map (((i, Expr.num 0)) :: ·)
+      match c with
+      | '+' => single 0
+      | '-' => single 1
+      | '*' => single 2
+      | '/' => single 3
+      | '(' => single 4
+      | ')' => single 5
+      | _ => none
+
+/-- Lex a string into a token buffer ending in an infinite `EOF` filler. -/
+def lexString (s : String) : Option (Buffer (A := automaton)) :=
+  (lexAux s.toList).map (fun toks => toks ++ₛ Stream'.const ((6 : Fin 10), Expr.num 0))
+
+/-- Parse a string into an `Expr` (`MiniCalc.v`, `string2expr`). -/
+def parseExpr (s : String) : Option Expr :=
+  match lexString s with
+  | none => none
+  | some buf =>
+    match Main.parse (A := automaton) (0 : Fin 1) minicalcSafe 50 buf with
+    | .Parsed e _ => some e
+    | _ => none
+
+/-- Re-linearize an expression (`MiniCalc.v`, `Print.pr_expr`). -/
+def prExpr : Expr → String
+  | .num n => toString n
+  | .var x => x
+  | .add a b => "(" ++ prExpr a ++ "+" ++ prExpr b ++ ")"
+  | .sub a b => "(" ++ prExpr a ++ "-" ++ prExpr b ++ ")"
+  | .mul a b => "(" ++ prExpr a ++ "*" ++ prExpr b ++ ")"
+  | .div a b => "(" ++ prExpr a ++ "/" ++ prExpr b ++ ")"
+
+/-! ### Acceptance tests
+
+The safety certificate above (`minicalcSafe`) and soundness (`parse_correct`) are
+kernel-checked. The value tests below run the *compiled* parser (via
+`native_decide`/`#eval`) — the right tool for "does it compute the expected AST",
+and how the parser is actually used. A clean build means each assertion holds. -/
+
+-- Precedence: `*` binds tighter than `+`.
+example : parseExpr "1+2*3" = some (.add (.num 1) (.mul (.num 2) (.num 3))) := by native_decide
+-- Parentheses override precedence.
+example : parseExpr "(1+2)*3" = some (.mul (.add (.num 1) (.num 2)) (.num 3)) := by native_decide
+-- `-` is left-associative (LR handles left recursion).
+example : parseExpr "1-2-3" = some (.sub (.sub (.num 1) (.num 2)) (.num 3)) := by native_decide
+-- The Coq demo's example.
+example : parseExpr "12 + 34*x / (48+y)"
+    = some (.add (.num 12) (.div (.mul (.num 34) (.var "x")) (.add (.num 48) (.var "y")))) := by
+  native_decide
+-- Round-trip against the Coq demo's expected re-print.
+example : (parseExpr "12 + 34*x / (48+y)").map prExpr = some "(12+((34*x)/(48+y)))" := by native_decide
+-- Ill-formed inputs are rejected.
+example : parseExpr "1+" = none := by native_decide
+example : parseExpr "(1+2" = none := by native_decide
+
+#eval (parseExpr "12 + 34*x / (48+y)").map prExpr   -- some "(12+((34*x)/(48+y)))"
+#eval (parseExpr "1+2*3").map prExpr                 -- some "(1+(2*3))"
+
+/- **Soundness** for this generated parser is the verified, kernel-checked
+`Main.parse_correct (A := automaton) (0 : Fin 1) minicalcSafe` : whenever
+`Main.parse` returns `Parsed sem _`, `sem` is the semantics of a real parse tree
+of the consumed input. (We don't instantiate it inline: unfolding the large
+kernel-`decide` proof `minicalcSafe` during elaboration is needlessly slow; the
+generic theorem already applies.) -/
+
+end LeanMenhir.Examples.MiniCalc

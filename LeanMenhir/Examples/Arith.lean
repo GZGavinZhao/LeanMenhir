@@ -7,6 +7,13 @@ recursive-descent backend gets wrong.
     S → E eof
     E → E '+' num | num        (value = sum of the numbers)
 
+This example demonstrates the **fully self-contained, in-Lean** path: the tables
+come straight from `Grammar0.buildTables` (a `partial def`, hence not
+kernel-reducible) and the safety certificate is discharged by `native_decide`
+(which trusts the compiler, adding `Lean.ofReduceBool`). For the complementary
+**no-compiler-trust** path — concrete emitted tables certified by kernel
+`decide` — see `Examples/MiniCalc`.
+
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Generator.LR1

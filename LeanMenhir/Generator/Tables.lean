@@ -56,7 +56,7 @@ structure GenTables where
   pastStateSets : Array (Array (Array Nat)) -- numStates; each a list of state-sets
   nullable : Array Bool               -- numNonterm
   first : Array (Array Nat)           -- numNonterm
-deriving Inhabited
+deriving Inhabited, Repr
 
 /-- Number of non-initial states. -/
 def GenTables.numNonInit (g : GenTables) : Nat := g.numStates - 1
@@ -144,7 +144,7 @@ def automatonOfTables : Automaton where
     (g.pastStateSets.getD (n.val + 1) #[]).toList.map (fun (stateSet : Array Nat) =>
       fun (s : State (Fin 1) (Fin (g.numNonInit + 1))) =>
         let flat := match s with | .Init _ => 0 | .Ninit m => m.val + 1
-        stateSet.contains flat)
+        stateSet.toList.contains flat)
   items_of_state := fun _ => []
   nullable_nterm := fun nt => g.nullable.getD nt.val false
   first_nterm := fun nt => (g.first.getD nt.val #[]).toList.map (cl g.numTerm)

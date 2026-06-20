@@ -13,3 +13,4 @@ import LeanMenhir.Generator.FinAlphabet
 import LeanMenhir.Generator.Tables
 import LeanMenhir.Generator.LR1
 import LeanMenhir.Examples.Arith
+import LeanMenhir.Examples.MiniCalc
