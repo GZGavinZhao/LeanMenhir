@@ -38,9 +38,10 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
   `Validator/Classes`, `Validator/Safe` (incl. `safe_is_validator`),
   `Interpreter` (`pop`, `reduceStep`, `step`, `parseFix`, `parse` + all stack-
   invariant lemmas).
-- **Soundness:** `pop_spec_ptl` and `reduceStep_sound` proved; `parse_correct`
-  proved modulo `parseFix_sound`. Remaining `sorry`s: `step_sound`,
-  `parseFix_sound` (mechanical inductions feeding `parse_correct`).
+- **Soundness — DONE, no `sorry`:** `pop_spec_ptl`, `reduceStep_sound`,
+  `step_sound`, `parseFix_sound`, and the user-facing `Main.parse_correct` are all
+  proved. `#print axioms Main.parse_correct` = `{propext, Classical.choice,
+  Quot.sound}` (no `sorryAx`).
 - **Native LR(1) generator (untrusted, `partial def`) — WORKING:**
   `Generator/FinAlphabet` (Fin alphabets), `Generator/Tables`
   (`GenTables` + `automatonOfTables`: rebuilds the dependent `Automaton` from
@@ -52,11 +53,19 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
   left-recursive `E → E + num | num` grammar; `isSafe` is discharged by
   `native_decide`, and `parse` of `1 + 2 + 3` gives `6` (the case PEG/recursive-
   descent backends get wrong). Bad input is rejected. All checked by
-  `native_decide` at build time.
+  `native_decide` at build time, and `Main.parse_correct` specialises to it.
 
-Key insight: `past_state` annotations are **one level longer** than `past_symb`
-(the state-stack has one more element than the symbol-stack — the validator pins
-the state reached after popping a whole RHS).
+Key insights: `past_state` annotations are **one level longer** than `past_symb`
+(the state-stack has one more element than the symbol-stack); Lean's definitional
+proof-irrelevance lets the dependent eq-proofs (`Shift_act`/cast) be aligned.
+
+## Remaining / future work
+
+- M4: completeness validator (`Validator_complete.v`) + `Interpreter_complete.v`
+  (`parse_complete`, `unambiguity`). Needs `items_of_state` + ordered terminal
+  sets/maps. The generator already records LR(1) items per state internally.
+- Cosmetic: `automatonOfTables` reducible-instance warning.
+- BNFC `--lean` backend integration to emit `Grammar0` from `.cf` files.
 - [ ] M2 — `Interpreter.lean` (executable)
 - [ ] M3 — Soundness (`Validator/Classes`, `Validator/Safe`, `Interpreter/Correct`, `Main.parse_correct`)
 - [ ] M4 — Completeness + unambiguity

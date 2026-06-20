@@ -347,6 +347,15 @@ def parseFix (hsafe : safe) (stk : Stack) (buffer : Buffer) (logNSteps : Nat)
           parseFix hsafe stk2 buffer2 n (Hi' stk2 buffer2 rfl)
       | ⟨sr, hsr⟩ => ⟨sr, hsr⟩
 
+/-- One unfolding of `parseFix` at a successor fuel (definitional). -/
+theorem parseFix_succ (hsafe : safe) (stk : Stack) (buffer : Buffer) (n : Nat)
+    (Hi : StackInvariant init stk) :
+    parseFix init hsafe stk buffer (n + 1) Hi =
+      match parseFix init hsafe stk buffer n Hi with
+      | ⟨.Progress stk2 buffer2, Hi'⟩ =>
+          parseFix init hsafe stk2 buffer2 n (Hi' stk2 buffer2 rfl)
+      | ⟨sr, hsr⟩ => ⟨sr, hsr⟩ := rfl
+
 /-- The empty stack satisfies the stack invariant (Coq `parse_subproof`). -/
 theorem initStackInvariant : StackInvariant init ([] : Stack) := by
   refine StackInvariant.mk [] ?_ ?_ StackInvariantNext.nil

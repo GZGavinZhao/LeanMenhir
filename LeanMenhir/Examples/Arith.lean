@@ -61,4 +61,10 @@ example : parseTokens [(0, 42)] = some 42 := by native_decide
 /-- Ill-formed input (`+ 1`) is rejected. -/
 example : parseTokens [(1, 0), (0, 1)] = none := by native_decide
 
+/- **Soundness for the generated parser**: the verified `Main.parse_correct`
+applies directly to this generated automaton — whenever it returns `Parsed sem _`,
+`sem` is the semantics of a real parse tree of the consumed input. -/
+#check fun (logNSteps : Nat) (buffer : Buffer (A := automaton)) =>
+  Main.parse_correct (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer
+
 end LeanMenhir.Examples.Arith

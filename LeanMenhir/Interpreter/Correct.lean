@@ -130,7 +130,73 @@ theorem step_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffer : 
         ∃ wordNew : List A.Token,
           word ++ₛ buffer = wordNew ++ₛ bufferNew ∧ WordHasStackSemantics wordNew stkNew
     | .Fail _ _ => True := by
-  sorry
+  simp only [step]
+  split
+  · -- outer Accept
+    rename_i sem bn heqa
+    split at heqa
+    · -- Default reduce
+      rename_i prod haction
+      have Hv : validForReduce (stateOfStack init stk) prod := by
+        have h := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at h; exact h
+      have heq2 : reduceStep init stk prod buffer Hv Hi = .Accept sem bn := heqa
+      have hr := reduceStep_sound init stk prod Hv Hi word buffer hword
+      rw [heq2] at hr
+      obtain ⟨pt, hb, hs⟩ := hr
+      exact ⟨word, pt, by rw [hb], hs⟩
+    · -- Lookahead
+      rename_i awt haction
+      split at heqa
+      · simp at heqa
+      · rename_i prod hawt
+        have Hv : validForReduce (stateOfStack init stk) prod := by
+          have h := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at h
+          have h2 := h (A.token_term buffer.head); rw [hawt] at h2; exact h2
+        have heq2 : reduceStep init stk prod buffer Hv Hi = .Accept sem bn := heqa
+        have hr := reduceStep_sound init stk prod Hv Hi word buffer hword
+        rw [heq2] at hr
+        obtain ⟨pt, hb, hs⟩ := hr
+        exact ⟨word, pt, by rw [hb], hs⟩
+      · simp at heqa
+  · -- outer Progress
+    rename_i stk' bn heqp
+    split at heqp
+    · -- Default reduce
+      rename_i prod haction
+      have Hv : validForReduce (stateOfStack init stk) prod := by
+        have h := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at h; exact h
+      have heq2 : reduceStep init stk prod buffer Hv Hi = .Progress stk' bn := heqp
+      have hr := reduceStep_sound init stk prod Hv Hi word buffer hword
+      rw [heq2] at hr
+      obtain ⟨hb, hw⟩ := hr
+      exact ⟨word, by rw [hb], hw⟩
+    · -- Lookahead
+      rename_i awt haction
+      split at heqp
+      · -- shift: push the read token
+        rename_i sn e hawt
+        injection heqp with hst hbuf
+        subst hst; subst hbuf
+        refine ⟨word ++ [buffer.head], ?_, ?_⟩
+        · rw [Stream'.append_append_stream]
+          congr 1
+          rw [Stream'.cons_append_stream, Stream'.nil_append_stream]
+          exact (Stream'.eta buffer).symm
+        · have key := WordHasStackSemantics.cons hword sn (e ▸ ParseTree.Terminal_pt buffer.head)
+          rw [ptSem_cast e (ParseTree.Terminal_pt buffer.head), ptSem] at key
+          exact key
+      · rename_i prod hawt
+        have Hv : validForReduce (stateOfStack init stk) prod := by
+          have h := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at h
+          have h2 := h (A.token_term buffer.head); rw [hawt] at h2; exact h2
+        have heq2 : reduceStep init stk prod buffer Hv Hi = .Progress stk' bn := heqp
+        have hr := reduceStep_sound init stk prod Hv Hi word buffer hword
+        rw [heq2] at hr
+        obtain ⟨hb, hw⟩ := hr
+        exact ⟨word, by rw [hb], hw⟩
+      · simp at heqp
+  · -- outer Fail
+    trivial
 
 /-- The parse loop is sound (Coq `parse_fix_invariant`). -/
 theorem parseFix_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffer : Buffer)
@@ -143,7 +209,26 @@ theorem parseFix_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffe
         ∃ wordNew : List A.Token,
           word ++ₛ buffer = wordNew ++ₛ bufferNew ∧ WordHasStackSemantics wordNew stkNew
     | .Fail _ _ => True := by
-  sorry
+  induction logNSteps generalizing stk word buffer Hi with
+  | zero => exact step_sound init hsafe stk word buffer Hi hword
+  | succ n ih =>
+    have IH := ih stk word buffer Hi hword
+    rcases hpf : parseFix init hsafe stk buffer n Hi with ⟨sr, hsr⟩
+    rw [hpf] at IH
+    rw [parseFix_succ, hpf]
+    cases sr with
+    | Accept s b => exact IH
+    | Fail s t => trivial
+    | Progress stk2 buf2 =>
+      obtain ⟨word2, hb, hw2⟩ := IH
+      have IH2 := ih stk2 word2 buf2 (hsr stk2 buf2 rfl) hw2
+      revert IH2
+      cases (parseFix init hsafe stk2 buf2 n (hsr stk2 buf2 rfl)).1 with
+      | Accept s b =>
+        intro IH2; obtain ⟨w, pt, he, hs⟩ := IH2; exact ⟨w, pt, by rw [hb]; exact he, hs⟩
+      | Progress s2 b2 =>
+        intro IH2; obtain ⟨w, he, hh⟩ := IH2; exact ⟨w, by rw [hb]; exact he, hh⟩
+      | Fail _ _ => intro _; trivial
 
 /-- **Soundness.** If the parser returns `Parsed sem buffer'`, the consumed input
 `word ++ buffer'` has a parse tree of head `start_nt init` with semantics `sem`
