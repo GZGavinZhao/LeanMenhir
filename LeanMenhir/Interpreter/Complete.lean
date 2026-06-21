@@ -133,6 +133,22 @@ theorem pop_stack_compat_pop_spec {R : Type} :
       exact PopSpec.cons st stk' action (ptSem pt) stk0 (ptlSem ptl' (action (ptSem pt)))
         (pop_stack_compat_pop_spec ptl' stk' stk0 (action (ptSem pt)) hcompat)
 
+/-- The concrete `pop` agrees with any `PopSpec` derivation (reverse of
+`pop_spec_ok`). -/
+theorem pop_eq_of_popSpec {R : Type} {symbs : List (Symbol A.Terminal A.Nonterminal)} {stk : Stack}
+    {action : arrowsRight R (symbs.map A.symbol_semantic_type)} {stk0 : Stack} {res : R}
+    (h : PopSpec symbs stk action stk0 res) :
+    ∀ hp : Prefix symbs (symbStackOfStack stk), pop symbs stk hp action = (stk0, res) := by
+  induction h with
+  | nil stk0 sem => intro hp; rfl
+  | cons st stk0' action' sem stk' res' h' ih =>
+    intro hp
+    rw [pop]
+    have hcast : cast (congrArg A.symbol_semantic_type (Prefix.inv_cons hp).1.symm) sem = sem :=
+      eq_of_heq (cast_heq _ _)
+    rw [hcast]
+    exact ih _
+
 /-! ### Dotted parse trees -/
 
 section Completeness
