@@ -11,10 +11,11 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
 - **Alphabet encoding:** custom `Comparable` / `ComparableLeibnizEq` classes
   mirroring Coq (3-way `compare : α → α → Ordering`, `Ordering.swap` plays the
   role of Coq `CompOpp`). The `Alphabet` class bundles `Comparable` +
-  `ComparableLeibnizEq` + Mathlib `Fintype` (so `all_list := Finset.univ.toList`,
-  reusing Mathlib finiteness). Custom `compare` kept because (a) the validators
-  are defined in terms of `compare_eqb` / `all_list` exactly as in Coq, and (b)
-  the completeness milestone (M4) needs an ordered map keyed by `compare`.
+  `ComparableLeibnizEq` + a custom computable `Enumerable` (an explicit `allList`
+  with a completeness proof, mirroring Coq's `Finite.all_list` — *not* Mathlib
+  `Fintype`, which is used only by the untrusted `Generator/`). Custom `compare`
+  kept because the validators are defined in terms of `compare_eqb` / `allList`
+  exactly as in Coq.
 - **Module functor encoding:** Coq `Module Type`s become Lean **classes**
   (`Grammar`, `Automaton extends Grammar`), bundling all parameters as fields.
   Code is written in `section`s with `variable [Automaton]` etc. One
