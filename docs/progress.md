@@ -73,61 +73,73 @@ Key insights:
   `Array.toList.contains`). `native_decide` scales to large grammars but trusts
   the compiler. We offer both.
 
-## M4 — Completeness (in progress)
+## M4 — Completeness (DONE, `sorry`-free)
 
-Porting `Validator_complete.v` + `Interpreter_complete.v`.
+Full port of `Validator_complete.v` + `Interpreter_complete.v` + the `Main.v`
+completeness/unambiguity theorems. `#print axioms Main.parse_complete` =
+`#print axioms Main.unambiguity` = `{propext, Classical.choice, Quot.sound}` (no
+`sorryAx`, no `Lean.ofReduceBool` — soundness *and* completeness are kernel-proven;
+only the per-grammar safety/completeness certificates use `decide`/`native_decide`).
 
-**Done (builds clean, `sorry`-free):**
-- `LeanMenhir/Validator/Complete.lean` — **complete.** The 8 invariants
-  (`nullableStable`, `firstStable`, `startFuture`, `terminalShift`, `endReduce`,
-  `nonTerminalGoto`, `startGoto`, `nonTerminalClosed`) bundled as `complete`; the
-  boolean validator `isComplete`; and `complete_is_validator`. `stateHasFuture`
-  is defined directly over `items_of_state` (membership) instead of Coq's
-  AVL `FSet`/`FMap`; lookahead/first sets are plain `List`s. (The interpreter
-  proof uses the 8 properties abstractly, so this is invisible there.)
-- `LeanMenhir/Interpreter/Complete.lean` — **most of it:**
+- `LeanMenhir/Validator/Complete.lean` — the 8 invariants (`nullableStable`,
+  `firstStable`, `startFuture`, `terminalShift`, `endReduce`, `nonTerminalGoto`,
+  `startGoto`, `nonTerminalClosed`) bundled as `complete`; the boolean validator
+  `isComplete`; `complete_is_validator`. `stateHasFuture` is defined directly over
+  `items_of_state` (membership) instead of Coq's AVL `FSet`/`FMap`;
+  lookahead/first sets are plain `List`s. (The interpreter proof uses the 8
+  properties abstractly, so this representation is invisible there.)
+- `LeanMenhir/Interpreter/Complete.lean`:
   - Part 1: `nullable_correct`/`first_correct` (fixpoint correctness),
     `first_word_set_app`, `ptlStackCompat` + `pop_stack_compat_pop_spec`.
   - Part 2: `PtZipper`/`PtlZipper`/`PtDot` (dotted parse trees), `ptdSem`,
     `ptdBuffer`, `ptlzProd`/`ptlzFuture`/`ptlzLookahead`,
-    `ptz/ptlz/ptdStackCompat`, and helpers `ptlz_future_ptlz_prod`,
+    `ptz/ptlz/ptdStackCompat`, helpers `ptlz_future_ptlz_prod`,
     `ptlz_future_first`, `ptz_stack_compat_cons_state_has_future`.
   - Part 3: `buildPtDotFromPt`/`_rec`/`_ptl`, `nextPtd`/`nextPtdIter`, and ALL
     four families of preservation lemmas: `sem_*`, `ptd_buffer_*`,
     `ptd_stack_compat_*` (incl. `stateHasFuture_of_ptzStackCompat`), and
     `ptd_cost_*` / `next_ptd_cost` / `next_ptd_iter_cost` (the 2^log_n_steps
-    fuel bound).
-  - `pop_eq_of_popSpec` (reverse of `pop_spec_ok`).
+    fuel bound). Plus `pop_eq_of_popSpec` (reverse of `pop_spec_ok`).
+  - Part 4: the interpreter↔`next_ptd` correspondence —
+    `reduceStep_progress_eq`/`reduceStep_accept_eq` (evaluate `reduceStep`),
+    `reduceStep_next_ptdAux`/`reduceStep_next_ptd`, the three `step` evaluation
+    lemmas (`step_eq_reduceStep_default`/`_lookahead`, `step_shift_eq`),
+    `step_next_ptd`, `parseFix_next_ptd_iter`, and the top-level `parse_complete`.
+- `LeanMenhir/Main.lean` — `completeValidator`, `parse_complete`, `unambiguity`.
 
-**Remaining (Part 4 + wiring):**
-- `reduce_step_next_ptd`, `step_next_ptd`, `parse_fix_next_ptd_iter`,
-  `parse_complete` — the step-correspondence lemmas relating the interpreter
-  (`reduceStep`/`step`/`parseFix`/`parse`) to the `nextPtd` traversal.
-- `Main.parse_complete` + `unambiguity`.
-
-**Two specific Lean obstacles identified for Part 4** (both tractable, need care):
-  1. *Evaluating `reduceStep`.* Its body has `let`-bound proof arguments
-     (`hpref`) and a `match hpop : pop … with`; `rw [hpop]` fails ("motive not
-     type correct" / proof-irrelevant `hpref` mismatch). `simp only [hpop]`
-     rewrites value positions but not the `match`-discriminant. The working
-     route is `unfold reduceStep; simp only [hpop]; split` (split the goto
-     match) + `some`-injectivity + cast/`cast_heq` reconciliation, mirroring how
-     `Interpreter/Correct.lean`'s `reduceStep_sound` splits.
-  2. *Casing the zipper at a fixed nonterminal index.* `ptz : PtZipper init
-     full_word (.NT (prod_lhs prod)) word` — `cases ptz` fails on the `Top_ptz`
-     branch ("failed to solve `prod_lhs prod = start_nt init`"). Needs a
-     generic-nonterminal helper (`ptz : PtZipper … (.NT nt) word`, `nt` a
-     variable, `hnt : prod_lhs prod = nt`) where `cases ptz` works, with HEq/cast
-     bridging at the `nt := prod_lhs prod` call site. (`nextPtdAux`,
-     `sem_nextPtdAux`, `cost_nextPtdAux` already use this generic-`nt` pattern.)
+How the two Part-4 obstacles were solved:
+  1. *Evaluating `reduceStep`* (its body has `let`-bound proof args + a
+     `match hpop : pop … with`). The working route is `unfold reduceStep;
+     simp only [hpop]; split` on the goto match, then `injection` on the goto
+     `some`-equation (proof irrelevance discards the `Prop`-valued `Sigma` second
+     component), closing by `rfl`. Packaged as `reduceStep_progress_eq` /
+     `reduceStep_accept_eq` so the main lemmas never fight the `let`s again.
+  2. *Casing the zipper at a fixed nonterminal index.* The generic-`nt` helper
+     `reduceStep_next_ptdAux` (`ptz : PtZipper … (.NT nt) word`, `nt` a variable,
+     `hnt : prod_lhs prod = nt`, plus an explicit `pt` with
+     `hpt : pt = hnt ▸ Non_terminal_pt prod ptl`) lets `cases ptz` succeed;
+     `subst hnt; subst hpt` then cleans the rfl-cast, and `ptSem_recNT` bridges
+     the residual semantic cast. `reduceStep_next_ptd` instantiates it at
+     `nt := prod_lhs prod`, `hnt := rfl` (casts vanish).
+  Other gotchas: reduce a `def`'s `match fut with` hypothesis with `dsimp only`
+  (literal-cons) and the action-table `match` with `simp only [haction]`;
+  `parseFix_next_ptd_iter` must `simp only [nextPtdIter, hni]` *before*
+  `rw [parseFix_succ, hpf]` (simp chokes on `parseFix.match_1`'s
+  overlapping-pattern equation lemmas if the match is already present), then
+  `cases sr` mirrors `parseFix_sound`. `step_shift_eq` is stated over an explicit
+  `Stream'.cons tok rest` (not `buffer.head`/`buffer.tail`) so the head reduces
+  definitionally inside the proof.
 
 ## Remaining / future work
 - Cosmetic: `automatonOfTables` reducible-instance warning.
 - BNFC `--lean` backend integration to emit `Grammar0` from `.cf` files.
-- [ ] M2 — `Interpreter.lean` (executable)
-- [ ] M3 — Soundness (`Validator/Classes`, `Validator/Safe`, `Interpreter/Correct`, `Main.parse_correct`)
-- [ ] M4 — Completeness + unambiguity
-- [ ] M5 — MiniCalc end-to-end example
+- Optionally: discharge `completeValidator () = true` for `Examples/MiniCalc`
+  (and `Examples/Arith`) by `decide`/`native_decide` and instantiate
+  `parse_complete`/`unambiguity` end-to-end.
+- [x] M2 — `Interpreter.lean` (executable)
+- [x] M3 — Soundness (`Validator/Classes`, `Validator/Safe`, `Interpreter/Correct`, `Main.parse_correct`)
+- [x] M4 — Completeness + unambiguity
+- [x] M5 — MiniCalc end-to-end example
 
 ## Notes / gotchas
 

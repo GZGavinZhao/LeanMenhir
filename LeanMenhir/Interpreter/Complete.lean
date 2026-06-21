@@ -836,6 +836,380 @@ theorem next_ptd_iter_cost (ptd : PtDot init full_word) (logNSteps : Nat) :
       | none => simp only [h2] at IH2 ⊢; omega
       | some ptd'' => simp only [h2] at IH2 ⊢; omega
 
+/-! ### Evaluating `reduceStep`
+
+Two evaluation lemmas for `reduceStep`, derived from a `pop` equation, splitting
+on whether the goto for the produced nonterminal succeeds. Proof irrelevance
+(plus `injection` discarding the `Prop`-valued second component of the goto
+`Sigma`) aligns the dependently-typed proof arguments inside `reduceStep`. -/
+
+/-- If popping `prod`'s RHS yields `(stk0, sem)` and the goto on `prod_lhs prod`
+succeeds, `reduceStep` makes progress, pushing the goto target. -/
+theorem reduceStep_progress_eq (stk : Stack) (prod : A.Production) (buf : Buffer)
+    (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk)
+    (stk0 : Stack) (sem : A.symbol_semantic_type (.NT (A.prod_lhs prod)))
+    (stateNew : A.NonInitState)
+    (e : Symbol.NT (A.prod_lhs prod) = A.last_symb_of_non_init_state stateNew)
+    (hpop : pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (A.prod_action prod) = (stk0, sem))
+    (hgoto : A.goto_table (stateOfStack init stk0) (A.prod_lhs prod) = some ⟨stateNew, e⟩) :
+    reduceStep init stk prod buf Hval Hi =
+      .Progress (⟨stateNew, cast (congrArg A.symbol_semantic_type e) sem⟩ :: stk0) buf := by
+  unfold reduceStep
+  simp only [hpop]
+  have h1 : (pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (A.prod_action prod)).1 = stk0 := congrArg Prod.fst hpop
+  split
+  · rename_i sn e' hg
+    rw [h1, hgoto] at hg
+    injection hg with hg'
+    injection hg' with hsn
+    subst hsn
+    rfl
+  · rename_i hg
+    rw [h1, hgoto] at hg
+    exact absurd hg (by simp)
+
+/-- If popping `prod`'s RHS yields `(stk0, sem)` and the goto on `prod_lhs prod`
+fails, `reduceStep` accepts with the (cast) popped value. -/
+theorem reduceStep_accept_eq (stk : Stack) (prod : A.Production) (buf : Buffer)
+    (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk)
+    (stk0 : Stack) (sem : A.symbol_semantic_type (.NT (A.prod_lhs prod)))
+    (e2 : A.prod_lhs prod = A.start_nt init)
+    (hpop : pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (A.prod_action prod) = (stk0, sem))
+    (hgoto : A.goto_table (stateOfStack init stk0) (A.prod_lhs prod) = none) :
+    reduceStep init stk prod buf Hval Hi =
+      .Accept (cast (congrArg (fun nt => A.symbol_semantic_type (Symbol.NT nt)) e2) sem) buf := by
+  unfold reduceStep
+  simp only [hpop]
+  have h1 : (pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (A.prod_action prod)).1 = stk0 := congrArg Prod.fst hpop
+  split
+  · rename_i sn e' hg
+    rw [h1, hgoto] at hg
+    exact absurd hg (by simp)
+  · rfl
+
+/-! ### `reduce_step` follows `next_ptd` -/
+
+/-- Transporting a parse tree along a nonterminal equality casts its semantics. -/
+theorem ptSem_recNT {a b : A.Nonterminal} (h : a = b) {w : List A.Token}
+    (x : ParseTree (.NT a) w) :
+    ptSem (h ▸ x) = cast (congrArg (fun n => A.symbol_semantic_type (.NT n)) h) (ptSem x) := by
+  subst h; rfl
+
+/-- Generic-nonterminal core of `reduce_step_next_ptd`: with the produced
+nonterminal abstracted to a variable `nt`, `cases ptz` is legal. -/
+theorem reduceStep_next_ptdAux (hc : complete) {nt : A.Nonterminal} {word : List A.Token}
+    (prod : A.Production) (hnt : A.prod_lhs prod = nt)
+    (ptl : ParseTreeList (A.prod_rhs_rev prod) word)
+    (ptz : PtZipper init full_word (.NT nt) word)
+    (stk stk0 : Stack)
+    (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk)
+    (Hstk : ptlStackCompat stk0 ptl stk)
+    (Hstk0 : ptzStackCompat init full_word buffer_end stk0 ptz)
+    (pt : ParseTree (.NT nt) word)
+    (hpt : pt = hnt ▸ ParseTree.Non_terminal_pt prod ptl) :
+    match nextPtdAux init full_word pt ptz with
+    | none =>
+      reduceStep init stk prod (ptzBuffer init full_word buffer_end ptz) Hval Hi =
+        .Accept (ptzSem init full_word ptz (ptSem pt)) buffer_end
+    | some ptd =>
+      ∃ stk', reduceStep init stk prod (ptzBuffer init full_word buffer_end ptz) Hval Hi =
+        .Progress stk' (ptdBuffer init full_word buffer_end ptd) ∧
+        ptdStackCompat init full_word buffer_end ptd stk' := by
+  have hpop : pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (A.prod_action prod) = (stk0, ptlSem ptl (A.prod_action prod)) :=
+    pop_eq_of_popSpec (pop_stack_compat_pop_spec ptl stk stk0 (A.prod_action prod) Hstk) _
+  cases ptz with
+  | Top_ptz =>
+    simp only [nextPtdAux, ptzBuffer, ptzSem]
+    simp only [ptzStackCompat] at Hstk0
+    subst Hstk0
+    have hgoto : A.goto_table (stateOfStack init []) (A.prod_lhs prod) = none := by
+      show A.goto_table (.Init init) (A.prod_lhs prod) = none
+      rw [hnt]
+      have hsg := startGoto_of_complete hc init
+      cases hg2 : A.goto_table (.Init init) (A.start_nt init) with
+      | none => rfl
+      | some v => rw [hg2] at hsg; exact hsg.elim
+    rw [reduceStep_accept_eq init stk prod buffer_end Hval Hi []
+      (ptlSem ptl (A.prod_action prod)) hnt hpop hgoto]
+    rw [hpt, ptSem_recNT]
+    simp only [ptSem]
+  | Cons_ptl_ptz ptl' ptlz =>
+    simp only [nextPtdAux, ptzBuffer]
+    subst hnt
+    subst hpt
+    simp only [ptzStackCompat] at Hstk0
+    obtain ⟨stk0', Hfut, Hstk', Hstk0'⟩ := Hstk0
+    have Hgoto := nonTerminalGoto_of_complete hc (stateOfStack init stk0)
+      (ptlzProd init full_word ptlz) (Symbol.NT (A.prod_lhs prod) :: ptlzFuture init full_word ptlz)
+      (ptlzLookahead init full_word buffer_end ptlz) Hfut
+    dsimp only at Hgoto
+    cases hg : A.goto_table (stateOfStack init stk0) (A.prod_lhs prod) with
+    | none => rw [hg] at Hgoto; exact Hgoto.elim
+    | some v =>
+      obtain ⟨stateNew, e⟩ := v
+      rw [hg] at Hgoto
+      refine ⟨⟨stateNew, cast (congrArg A.symbol_semantic_type e)
+        (ptlSem ptl (A.prod_action prod))⟩ :: stk0, ?_, ?_⟩
+      · rw [reduceStep_progress_eq init stk prod (ptlzBuffer init full_word buffer_end ptlz) Hval Hi
+          stk0 (ptlSem ptl (A.prod_action prod)) stateNew e hpop hg]
+        rw [ptd_buffer_build_from_ptl init full_word buffer_end
+          (ParseTreeList.Cons_ptl ptl' (.Non_terminal_pt prod ptl)) ptlz]
+      · refine ptd_stack_compat_build_from_ptl init full_word buffer_end hc
+          (ParseTreeList.Cons_ptl ptl' (.Non_terminal_pt prod ptl)) ptlz _ stk0' Hstk0' ?_ Hgoto
+        simp only [ptlStackCompat]
+        refine ⟨Hstk', e, ?_⟩
+        simp only [ptSem]; rfl
+
+/-- `reduce_step` follows `next_ptd` (Coq `reduce_step_next_ptd`). -/
+theorem reduceStep_next_ptd (hc : complete) {prod : A.Production} {word : List A.Token}
+    (ptl : ParseTreeList (A.prod_rhs_rev prod) word)
+    (ptz : PtZipper init full_word (.NT (A.prod_lhs prod)) word)
+    (stk : Stack) (Hval : validForReduce (stateOfStack init stk) prod)
+    (Hi : StackInvariant init stk)
+    (Hstk : ptdStackCompat init full_word buffer_end (.Reduce_ptd ptl ptz) stk) :
+    match nextPtd init full_word (.Reduce_ptd ptl ptz) with
+    | none =>
+      reduceStep init stk prod (ptzBuffer init full_word buffer_end ptz) Hval Hi =
+        .Accept (ptdSem init full_word (.Reduce_ptd ptl ptz)) buffer_end
+    | some ptd =>
+      ∃ stk', reduceStep init stk prod (ptzBuffer init full_word buffer_end ptz) Hval Hi =
+        .Progress stk' (ptdBuffer init full_word buffer_end ptd) ∧
+        ptdStackCompat init full_word buffer_end ptd stk' := by
+  simp only [ptdStackCompat] at Hstk
+  obtain ⟨stk0, _, Hstk', Hstk0⟩ := Hstk
+  have h := reduceStep_next_ptdAux init full_word buffer_end hc prod rfl ptl ptz stk stk0
+    Hval Hi Hstk' Hstk0 (.Non_terminal_pt prod ptl) rfl
+  simp only [nextPtd, ptdSem, ptSem] at *
+  exact h
+
+/-! ### Evaluating `step` -/
+
+/-- `step` reduces to `reduceStep` when the state default-reduces. -/
+theorem step_eq_reduceStep_default (hsafe : safe) (stk : Stack) (buffer : Buffer)
+    (Hi : StackInvariant init stk) (prod : A.Production)
+    (Hval : validForReduce (stateOfStack init stk) prod)
+    (haction : A.action_table (stateOfStack init stk) = .Default_reduce_act prod) :
+    step init hsafe stk buffer Hi = reduceStep init stk prod buffer Hval Hi := by
+  unfold step
+  split
+  · rename_i prod' haction'
+    rw [haction] at haction'; injection haction' with hp; subst hp; rfl
+  · rename_i awt haction'
+    rw [haction] at haction'; exact absurd haction' (by simp)
+
+/-- `step` reduces to `reduceStep` when the lookahead action is a reduce. -/
+theorem step_eq_reduceStep_lookahead (hsafe : safe) (stk : Stack) (buffer : Buffer)
+    (Hi : StackInvariant init stk) (prod : A.Production)
+    (Hval : validForReduce (stateOfStack init stk) prod)
+    (awt : (term : A.Terminal) → A.LookaheadAction term)
+    (haction : A.action_table (stateOfStack init stk) = .Lookahead_act awt)
+    (hawt : awt (A.token_term buffer.head) = .Reduce_act prod) :
+    step init hsafe stk buffer Hi = reduceStep init stk prod buffer Hval Hi := by
+  unfold step
+  split
+  · rename_i prod' haction'
+    rw [haction] at haction'; exact absurd haction' (by simp)
+  · rename_i awt' haction'
+    rw [haction] at haction'; injection haction' with haw; subst haw
+    dsimp only
+    split
+    · rename_i sn e hawt'
+      rw [hawt] at hawt'; exact absurd hawt' (by simp)
+    · rename_i prod'' hawt'
+      rw [hawt] at hawt'; injection hawt' with hp; subst hp; rfl
+    · rename_i hawt'
+      rw [hawt] at hawt'; exact absurd hawt' (by simp)
+
+/-- `step` shifts and pushes the read token when the lookahead action is a shift. -/
+theorem step_shift_eq (hsafe : safe) (stk : Stack) (tok : A.Token) (rest : Buffer)
+    (Hi : StackInvariant init stk)
+    (awt : (term : A.Terminal) → A.LookaheadAction term)
+    (haction : A.action_table (stateOfStack init stk) = .Lookahead_act awt)
+    (stateNew : A.NonInitState)
+    (e : Symbol.T (A.token_term tok) = A.last_symb_of_non_init_state stateNew)
+    (hawt : awt (A.token_term tok) = .Shift_act stateNew e) :
+    step init hsafe stk (Stream'.cons tok rest) Hi =
+      .Progress (⟨stateNew, cast (congrArg A.symbol_semantic_type e)
+        (A.token_sem tok)⟩ :: stk) rest := by
+  unfold step
+  split
+  · rename_i prod' haction'
+    rw [haction] at haction'; exact absurd haction' (by simp)
+  · rename_i awt' haction'
+    rw [haction] at haction'; injection haction' with haw; subst haw
+    simp only [Stream'.head_cons, Stream'.tail_cons]
+    split
+    · rename_i sn e' hawt'
+      rw [hawt] at hawt'; injection hawt' with hsn; subst hsn; rfl
+    · rename_i prod'' hawt'
+      rw [hawt] at hawt'; exact absurd hawt' (by simp)
+    · rename_i hawt'
+      rw [hawt] at hawt'; exact absurd hawt' (by simp)
+
+/-- Each parsing step follows `next_ptd` (Coq `step_next_ptd`). -/
+theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word) (stk : Stack)
+    (Hi : StackInvariant init stk)
+    (Hstk : ptdStackCompat init full_word buffer_end ptd stk) :
+    match nextPtd init full_word ptd with
+    | none =>
+      step init hsafe stk (ptdBuffer init full_word buffer_end ptd) Hi =
+        .Accept (ptdSem init full_word ptd) buffer_end
+    | some ptd' =>
+      ∃ stk', step init hsafe stk (ptdBuffer init full_word buffer_end ptd) Hi =
+        .Progress stk' (ptdBuffer init full_word buffer_end ptd') ∧
+        ptdStackCompat init full_word buffer_end ptd' stk' := by
+  cases ptd with
+  | @Reduce_ptd prod word ptl ptz =>
+    simp only [ptdBuffer]
+    have hsf : stateHasFuture (stateOfStack init stk) prod []
+        (A.token_term (ptzBuffer init full_word buffer_end ptz).head) := by
+      obtain ⟨stk0, h, _, _⟩ := Hstk; exact h
+    have Hred := endReduce_of_complete hc (stateOfStack init stk) prod []
+      (A.token_term (ptzBuffer init full_word buffer_end ptz).head) hsf
+    dsimp only at Hred
+    cases haction : A.action_table (stateOfStack init stk) with
+    | Default_reduce_act p =>
+      simp only [haction] at Hred
+      subst p
+      have hro := reduceOk_of_safe hsafe (stateOfStack init stk)
+      rw [haction] at hro
+      rw [step_eq_reduceStep_default init hsafe stk (ptzBuffer init full_word buffer_end ptz) Hi
+        prod hro haction]
+      exact reduceStep_next_ptd init full_word buffer_end hc ptl ptz stk hro Hi Hstk
+    | Lookahead_act awt =>
+      simp only [haction] at Hred
+      cases hawt : awt (A.token_term (ptzBuffer init full_word buffer_end ptz).head) with
+      | Shift_act s2 e => simp only [hawt] at Hred
+      | Reduce_act p =>
+        simp only [hawt] at Hred
+        subst p
+        have hro := reduceOk_of_safe hsafe (stateOfStack init stk)
+        rw [haction] at hro
+        have hro' := hro (A.token_term (ptzBuffer init full_word buffer_end ptz).head)
+        rw [hawt] at hro'
+        rw [step_eq_reduceStep_lookahead init hsafe stk (ptzBuffer init full_word buffer_end ptz) Hi
+          prod hro' awt haction hawt]
+        exact reduceStep_next_ptd init full_word buffer_end hc ptl ptz stk hro' Hi Hstk
+      | Fail_act => simp only [hawt] at Hred
+  | Shift_ptd tok ptl ptlz =>
+    simp only [nextPtd]
+    have hbuf : ptdBuffer init full_word buffer_end (PtDot.Shift_ptd tok ptl ptlz) =
+        Stream'.cons tok (ptlzBuffer init full_word buffer_end ptlz) := rfl
+    rw [hbuf]
+    simp only [ptdStackCompat] at Hstk
+    obtain ⟨stk0, Hfut, Hstk', Hstk0⟩ := Hstk
+    have Hact := terminalShift_of_complete hc (stateOfStack init stk) (ptlzProd init full_word ptlz)
+      (Symbol.T (A.token_term tok) :: ptlzFuture init full_word ptlz)
+      (ptlzLookahead init full_word buffer_end ptlz) Hfut
+    dsimp only at Hact
+    cases haction : A.action_table (stateOfStack init stk) with
+    | Default_reduce_act p => simp only [haction] at Hact
+    | Lookahead_act awt =>
+      simp only [haction] at Hact
+      cases hawt : awt (A.token_term tok) with
+      | Shift_act s2 e =>
+        simp only [hawt] at Hact
+        refine ⟨⟨s2, cast (congrArg A.symbol_semantic_type e) (A.token_sem tok)⟩ :: stk, ?_, ?_⟩
+        · rw [step_shift_eq init hsafe stk tok (ptlzBuffer init full_word buffer_end ptlz) Hi
+            awt haction s2 e hawt]
+          rw [← ptd_buffer_build_from_ptl init full_word buffer_end
+            (.Cons_ptl ptl (.Terminal_pt tok)) ptlz]
+        · refine ptd_stack_compat_build_from_ptl init full_word buffer_end hc
+            (.Cons_ptl ptl (.Terminal_pt tok)) ptlz _ stk0 Hstk0 ?_ Hact
+          simp only [ptlStackCompat]
+          exact ⟨Hstk', e, by simp only [ptSem]; rfl⟩
+      | Reduce_act p => simp only [hawt] at Hact
+      | Fail_act => simp only [hawt] at Hact
+
+/-- The parse loop follows `next_ptd_iter` (Coq `parse_fix_next_ptd_iter`). -/
+theorem parseFix_next_ptd_iter (hsafe : safe) (hc : complete) (ptd : PtDot init full_word)
+    (stk : Stack) (logNSteps : Nat) (Hi : StackInvariant init stk)
+    (Hstk : ptdStackCompat init full_word buffer_end ptd stk) :
+    match nextPtdIter init full_word ptd logNSteps with
+    | none =>
+      (parseFix init hsafe stk (ptdBuffer init full_word buffer_end ptd) logNSteps Hi).1 =
+        .Accept (ptdSem init full_word ptd) buffer_end
+    | some ptd' =>
+      ∃ stk', (parseFix init hsafe stk (ptdBuffer init full_word buffer_end ptd) logNSteps Hi).1 =
+        .Progress stk' (ptdBuffer init full_word buffer_end ptd') ∧
+        ptdStackCompat init full_word buffer_end ptd' stk' := by
+  induction logNSteps generalizing ptd stk Hi Hstk with
+  | zero => exact step_next_ptd init full_word buffer_end hsafe hc ptd stk Hi Hstk
+  | succ n ih =>
+    have IH1 := ih ptd stk Hi Hstk
+    rcases hpf : parseFix init hsafe stk (ptdBuffer init full_word buffer_end ptd) n Hi with ⟨sr, hsr⟩
+    rw [hpf] at IH1
+    cases hni : nextPtdIter init full_word ptd n with
+    | none =>
+      rw [hni] at IH1
+      simp only [nextPtdIter, hni]
+      rw [parseFix_succ, hpf]
+      cases sr with
+      | Accept s b => exact IH1
+      | Progress stk2 buf2 => exact absurd IH1 (by simp)
+      | Fail s t => exact absurd IH1 (by simp)
+    | some ptd' =>
+      rw [hni] at IH1
+      obtain ⟨stk', hsr_eq, Hstk'⟩ := IH1
+      simp only [nextPtdIter, hni]
+      have EQsem := sem_next_ptd_iter init full_word ptd n
+      rw [hni] at EQsem
+      rw [parseFix_succ, hpf]
+      cases sr with
+      | Accept s b => exact absurd hsr_eq (by simp)
+      | Fail s t => exact absurd hsr_eq (by simp)
+      | Progress stk2 buf2 =>
+        injection hsr_eq with h1 h2
+        subst h1; subst h2
+        rw [EQsem]
+        exact ih ptd' stk2 (hsr stk2 (ptdBuffer init full_word buffer_end ptd') rfl) Hstk'
+
+/-- **Completeness of the interpreter** (Coq `parse_complete`). Given any parse
+tree of the input, the parser succeeds with enough fuel, returns that tree's
+semantics, consumes exactly `full_word`, and a tighter fuel bound holds. -/
+theorem parse_complete (hsafe : safe) (hc : complete)
+    (full_pt : ParseTree (.NT (A.start_nt init)) full_word) (logNSteps : Nat) :
+    match parse init hsafe (full_word ++ₛ buffer_end) logNSteps with
+    | .Parsed sem buff =>
+      sem = ptSem full_pt ∧ buff = buffer_end ∧ ptSize full_pt ≤ 2 ^ logNSteps
+    | .Timeout => 2 ^ logNSteps < ptSize full_pt
+    | .Fail _ _ => False := by
+  set ptd0 := buildPtDotFromPt init full_word full_pt PtZipper.Top_ptz with hptd0
+  have Hstk : ptdStackCompat init full_word buffer_end ptd0 [] := by
+    rw [hptd0]
+    exact ptd_stack_compat_build_from_pt init full_word buffer_end hc full_pt PtZipper.Top_ptz []
+      (by simp only [ptzStackCompat])
+  have hbuf : ptdBuffer init full_word buffer_end ptd0 = full_word ++ₛ buffer_end := by
+    rw [hptd0, ← ptd_buffer_build_from_pt init full_word buffer_end full_pt PtZipper.Top_ptz]
+    simp only [ptzBuffer]
+  have hsem : ptdSem init full_word ptd0 = ptSem full_pt := by
+    rw [hptd0, ← sem_build_from_pt init full_word full_pt PtZipper.Top_ptz]
+    simp only [ptzSem]
+  have hcost : ptSize full_pt = ptdCost init full_word ptd0 + 1 := by
+    have h := ptd_cost_build_from_pt init full_word full_pt PtZipper.Top_ptz
+    simp only [ptzCost, ← hptd0] at h; omega
+  have Hparse := parseFix_next_ptd_iter init full_word buffer_end hsafe hc ptd0 [] logNSteps
+    (initStackInvariant init) Hstk
+  have Hcost := next_ptd_iter_cost init full_word ptd0 logNSteps
+  unfold parse
+  rw [← hbuf]
+  cases hni : nextPtdIter init full_word ptd0 logNSteps with
+  | none =>
+    rw [hni] at Hparse Hcost
+    rw [Hparse]
+    refine ⟨hsem, rfl, ?_⟩
+    omega
+  | some ptd' =>
+    rw [hni] at Hparse Hcost
+    obtain ⟨stk', hpf, _⟩ := Hparse
+    rw [hpf]
+    omega
+
 end Completeness
 
 end LeanMenhir
