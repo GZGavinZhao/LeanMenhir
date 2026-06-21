@@ -56,6 +56,9 @@ structure GenTables where
   pastStateSets : Array (Array (Array Nat)) -- numStates; each a list of state-sets
   nullable : Array Bool               -- numNonterm
   first : Array (Array Nat)           -- numNonterm
+  /-- `items[state]` = the LR(1) items of that state, each `(prod, dotPos, lookahead)`
+  (one entry per lookahead). Needed only for the completeness validator. -/
+  items : Array (Array (Nat × Nat × Nat)) -- numStates
 deriving Inhabited, Repr
 
 /-- Number of non-initial states. -/
@@ -114,7 +117,13 @@ def automatonOfTables : Automaton where
   symbol_semantic_type := fun _ => Val
   Production := Fin (g.numProd + 1)
   productionAlphabet := inferInstance
-  prod_lhs := fun p => cl g.numNonterm (g.prodLhs.getD p.val 0)
+  -- Real productions use their stored lhs; the *dummy* padding production
+  -- `numProd` is mapped to the dummy nonterminal `numNonterm` (which never appears
+  -- after a dot and is not the start symbol), so the completeness validators
+  -- (`start_future`, `non_terminal_closed`) impose no obligation on it.
+  prod_lhs := fun p =>
+    if p.val < g.numProd then cl g.numNonterm (g.prodLhs.getD p.val 0)
+    else cl g.numNonterm g.numNonterm
   prod_rhs_rev := fun p => (g.prodRhsRev.getD p.val #[]).toList.map (gsymToSymbol g)
   prod_action := fun p =>
     collectArrows (actions p.val) ((g.prodRhsRev.getD p.val #[]).toList.map (gsymToSymbol g)) []
@@ -145,8 +154,16 @@ def automatonOfTables : Automaton where
       fun (s : State (Fin 1) (Fin (g.numNonInit + 1))) =>
         let flat := match s with | .Init _ => 0 | .Ninit m => m.val + 1
         stateSet.toList.contains flat)
-  items_of_state := fun _ => []
-  nullable_nterm := fun nt => g.nullable.getD nt.val false
+  items_of_state := fun s =>
+    let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
+    (g.items.getD flat #[]).toList.map (fun it =>
+      { prod_item := cl g.numProd it.1
+        dot_pos_item := it.2.1
+        lookaheads_item := [cl g.numTerm it.2.2] })
+  -- The dummy nonterminal `numNonterm` is declared nullable so that the dummy
+  -- production `numNonterm → ε` satisfies `nullable_stable`; real nonterminals use
+  -- the generated table. (The dummy nonterminal never occurs in a real RHS.)
+  nullable_nterm := fun nt => if nt.val < g.numNonterm then g.nullable.getD nt.val false else true
   first_nterm := fun nt => (g.first.getD nt.val #[]).toList.map (cl g.numTerm)
 
 end Gen

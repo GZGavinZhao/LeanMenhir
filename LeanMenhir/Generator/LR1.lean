@@ -174,11 +174,20 @@ variable (g : Grammar0)
 partial def buildTables : GenTables := Id.run do
   let nl := g.computeNullable
   let fst := g.computeFirst nl
-  -- initial item set: closure of [S → • α, eof] for start productions
+  -- initial item set: closure of [S → • α, t] for all start productions and all
+  -- lookaheads `t`. coq-menhirlib's `start_future` requires the start items to
+  -- carry every terminal as lookahead; these extra lookaheads only propagate
+  -- along the (non-nullable, eof-terminated) start spine, so the rest of the
+  -- canonical LR(1) automaton is unchanged. We range over `[0 : numTerm + 1]`
+  -- (not just the real terminals) because the `Automaton`'s terminal type is the
+  -- padded `Fin (numTerm + 1)`, and `start_future`/`Allb` quantify over its dummy
+  -- element too.
   let initItems : List Item := Id.run do
     let mut acc : List Item := []
     for p in [0:g.numProd] do
-      if g.lhsOf p == g.start then acc := ⟨p, 0, g.eof⟩ :: acc
+      if g.lhsOf p == g.start then
+        for t in [0:g.numTerm + 1] do
+          acc := ⟨p, 0, t⟩ :: acc
     return g.closure nl fst acc
   let mut states : Array (List Item) := #[initItems]
   let mut incoming : Array (Option GSym) := #[none]
@@ -287,6 +296,7 @@ partial def buildTables : GenTables := Id.run do
     pastStateSets := pastState.map (fun l => (l.map List.toArray).toArray)
     nullable := nl
     first := fst.map List.toArray
+    items := states.map (fun its => (its.map (fun it => (it.prod, it.dot, it.la))).toArray)
   }
 
 end Grammar0
@@ -340,6 +350,8 @@ def emitTables (name : String) (g : GenTables) : String :=
   ++ line "pastStateSets" (emitArr (emitArr emitNatArr) g.pastStateSets)
   ++ line "nullable" (emitArr (fun b => if b then "true" else "false") g.nullable)
   ++ line "first" (emitArr emitNatArr g.first)
+  ++ line "items" (emitArr (emitArr (fun (it : Nat × Nat × Nat) =>
+        s!"({it.1}, {it.2.1}, {it.2.2})")) g.items)
   ++ "  }\n"
 
 end Gen

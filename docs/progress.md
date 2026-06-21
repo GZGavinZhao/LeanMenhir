@@ -130,12 +130,45 @@ How the two Part-4 obstacles were solved:
   `Stream'.cons tok rest` (not `buffer.head`/`buffer.tail`) so the head reduces
   definitionally inside the proof.
 
+## End-to-end completeness on the example grammars (DONE)
+
+The generator now also emits the per-state LR(1) **item sets** (a new `GenTables.items`
+field; `automatonOfTables.items_of_state` reads them), so the completeness
+validator can run on generated automata. Two subtleties were needed:
+
+- **Start items carry every terminal.** coq-menhirlib's `start_future` requires the
+  initial state to predict each start production with *every* terminal as
+  lookahead (not just `eof`). The generator seeds the initial item set with
+  `⟨p, 0, t⟩` for all start productions `p` and all `t ∈ [0 : numTerm+1]` (the `+1`
+  covers the padded `Fin (numTerm+1)` dummy terminal that `Allb`/`start_future`
+  quantify over). These extra lookaheads only propagate along the non-nullable,
+  eof-terminated start spine, so the rest of the canonical LR(1) automaton (state
+  count, transitions, action/goto/past_* tables) is byte-for-byte unchanged.
+- **The padded dummy production/nonterminal.** `Production`/`Nonterminal` are
+  `Fin (n+1)` with a never-referenced dummy slot. The dummy production (empty RHS,
+  clamped lhs) would spuriously trip `nullable_stable` and `start_future`, so
+  `automatonOfTables` maps the dummy production's lhs to the dummy nonterminal and
+  declares that nonterminal nullable — it never appears after a dot, so no real
+  validator obligation touches it.
+
+Results (`Examples/Arith.lean`, `Examples/MiniCalc.lean`):
+- `isComplete_ok` / `minicalcComplete : completeValidator () = true` — Arith by
+  `native_decide`, **MiniCalc by kernel `decide`** (`minicalcComplete` axioms =
+  `{propext, Quot.sound}`, no compiler trust, just like its safety certificate).
+- `arith_parses` / `mini_parses`: every parse tree with `ptSize tree ≤ 2^logNSteps`
+  is parsed to its own value, consuming exactly the word (a clean corollary of
+  `Main.parse_complete`).
+- `arith_unambiguous` / `mini_unambiguous`: any two parse trees of a word have
+  equal semantics (`Main.unambiguity`).
+
+  (Stating the corollary without a `match` in its conclusion avoids a matcher
+  mismatch: `Main.parse_complete`'s type uses an internal matcher
+  `Main.parse_complete.match_1`, and a hand-written `match … with` over the stuck
+  `Main.parse …` elaborates to a *different*, non-defeq matcher.)
+
 ## Remaining / future work
 - Cosmetic: `automatonOfTables` reducible-instance warning.
 - BNFC `--lean` backend integration to emit `Grammar0` from `.cf` files.
-- Optionally: discharge `completeValidator () = true` for `Examples/MiniCalc`
-  (and `Examples/Arith`) by `decide`/`native_decide` and instantiate
-  `parse_complete`/`unambiguity` end-to-end.
 - [x] M2 — `Interpreter.lean` (executable)
 - [x] M3 — Soundness (`Validator/Classes`, `Validator/Safe`, `Interpreter/Correct`, `Main.parse_correct`)
 - [x] M4 — Completeness + unambiguity

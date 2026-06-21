@@ -52,6 +52,11 @@ instance automaton : Automaton := automatonOfTables tables Nat actions
 /-- The safety validator accepts the generated tables — checked by computation. -/
 theorem isSafe_ok : Main.safeValidator (A := automaton) () = true := by native_decide
 
+/-- The **completeness** validator also accepts the generated tables. Combined
+with `Main.parse_complete`/`Main.unambiguity`, this certifies that the generated
+parser recognises *every* parse tree of the grammar and is unambiguous. -/
+theorem isComplete_ok : Main.completeValidator (A := automaton) () = true := by native_decide
+
 /-- Parse a token stream (terminal index, value), ending in an infinite `eof`. -/
 def parseTokens (toks : List (Fin 4 × Nat)) : Option Nat :=
   let buf : Buffer (A := automaton) := toks ++ₛ Stream'.const ((2 : Fin 4), 0)
@@ -73,5 +78,30 @@ applies directly to this generated automaton — whenever it returns `Parsed sem
 `sem` is the semantics of a real parse tree of the consumed input. -/
 #check fun (logNSteps : Nat) (buffer : Buffer (A := automaton)) =>
   Main.parse_correct (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer
+
+/-- **Completeness** for the generated Arith parser (a clean corollary of
+`Main.parse_complete` specialised with the safety + completeness certificates):
+*every* parse `tree` of `word`, given enough fuel (`ptSize tree ≤ 2 ^ logNSteps`),
+is parsed to its own semantic value, consuming exactly `word`. -/
+theorem arith_parses (logNSteps : Nat) (word : List automaton.Token)
+    (bufEnd : Buffer (A := automaton))
+    (tree : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word)
+    (hfuel : ptSize tree ≤ 2 ^ logNSteps) :
+    Main.parse (A := automaton) (0 : Fin 1) isSafe_ok logNSteps (word ++ₛ bufEnd)
+      = .Parsed (ptSem tree) bufEnd := by
+  have H := Main.parse_complete (A := automaton) (0 : Fin 1) isSafe_ok isComplete_ok
+    logNSteps word bufEnd tree
+  cases hp : Main.parse (A := automaton) (0 : Fin 1) isSafe_ok logNSteps (word ++ₛ bufEnd) with
+  | Parsed sem buff => rw [hp] at H; obtain ⟨h1, h2, _⟩ := H; rw [h1, h2]
+  | Timeout => rw [hp] at H; omega
+  | Fail s t => rw [hp] at H; exact H.elim
+
+/-- **Unambiguity** for the generated Arith parser: any two parse trees of the
+same word have equal semantic value. -/
+theorem arith_unambiguous (word : List automaton.Token)
+    (tree1 tree2 : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word) :
+    ptSem tree1 = ptSem tree2 :=
+  Main.unambiguity (A := automaton) isSafe_ok isComplete_ok ((2 : Fin 4), 0) (0 : Fin 1)
+    word tree1 tree2
 
 end LeanMenhir.Examples.Arith
