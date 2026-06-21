@@ -169,9 +169,6 @@ example : (parseExpr "12 + 34*x / (48+y)").map prExpr = some "(12+((34*x)/(48+y)
 example : parseExpr "1+" = none := by native_decide
 example : parseExpr "(1+2" = none := by native_decide
 
-#eval (parseExpr "12 + 34*x / (48+y)").map prExpr   -- some "(12+((34*x)/(48+y)))"
-#eval (parseExpr "1+2*3").map prExpr                 -- some "(1+(2*3))"
-
 /- **Soundness** for this generated parser is the verified, kernel-checked
 `Main.parse_correct (A := automaton) (0 : Fin 1) minicalcSafe` : whenever
 `Main.parse` returns `Parsed sem _`, `sem` is the semantics of a real parse tree

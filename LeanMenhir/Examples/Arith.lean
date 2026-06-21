@@ -73,11 +73,17 @@ example : parseTokens [(0, 42)] = some 42 := by native_decide
 /-- Ill-formed input (`+ 1`) is rejected. -/
 example : parseTokens [(1, 0), (0, 1)] = none := by native_decide
 
-/- **Soundness for the generated parser**: the verified `Main.parse_correct`
-applies directly to this generated automaton — whenever it returns `Parsed sem _`,
-`sem` is the semantics of a real parse tree of the consumed input. -/
-#check fun (logNSteps : Nat) (buffer : Buffer (A := automaton)) =>
-  Main.parse_correct (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer
+/-- **Soundness** for the generated Arith parser (a clean corollary of
+`Main.parse_correct`): whenever it returns `Parsed sem _`, `sem` is the semantics
+of a real parse tree of the consumed input. -/
+theorem arith_correct (logNSteps : Nat) (buffer : Buffer (A := automaton))
+    (sem : automaton.symbol_semantic_type (.NT (automaton.start_nt (0 : Fin 1))))
+    (bufNew : Buffer (A := automaton))
+    (h : Main.parse (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer = .Parsed sem bufNew) :
+    ∃ (word : List automaton.Token) (pt : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word),
+      buffer = word ++ₛ bufNew ∧ ptSem pt = sem := by
+  have H := Main.parse_correct (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer
+  rw [h] at H; exact H
 
 /-- **Completeness** for the generated Arith parser (a clean corollary of
 `Main.parse_complete` specialised with the safety + completeness certificates):
