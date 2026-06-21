@@ -496,6 +496,70 @@ theorem sem_next_ptd_iter (ptd : PtDot init full_word) (logNSteps : Nat) :
         rw [h2] at IH2
         exact IH1.trans IH2
 
+/-! ### `build_pt_dot` preserves the remaining buffer -/
+
+/-- If `nonNilProof` says nil, the word is empty. -/
+theorem nonNilProof_none {symbs : List (Symbol A.Terminal A.Nonterminal)} {word : List A.Token}
+    (ptl : ParseTreeList symbs word) (h : nonNilProof ptl = none) : word = [] := by
+  cases ptl with
+  | Nil_ptl => rfl
+  | Cons_ptl _ _ => simp [nonNilProof] at h
+
+/- The buffer of the dotted parse tree built from a parse tree is the recognised
+word followed by the zipper's buffer (Coq `ptd_buffer_build_from_pt`). -/
+mutual
+theorem ptd_buffer_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} →
+    {word : List A.Token} → (pt : ParseTree symb word) → (ptz : PtZipper init full_word symb word) →
+    word ++ₛ ptzBuffer init full_word buffer_end ptz =
+      ptdBuffer init full_word buffer_end (buildPtDotFromPt init full_word pt ptz)
+  | _, _, .Terminal_pt tok, ptz => by
+      cases ptz with
+      | Cons_ptl_ptz ptl ptlz =>
+        simp only [buildPtDotFromPt, ptdBuffer, ptzBuffer, Stream'.cons_append_stream,
+          Stream'.nil_append_stream]
+  | _, _, .Non_terminal_pt prod ptl, ptz => by
+      simp only [buildPtDotFromPt]
+      cases h : nonNilProof ptl with
+      | none =>
+        have hw := nonNilProof_none ptl h
+        subst hw
+        simp only [ptdBuffer, Stream'.nil_append_stream]
+      | some H =>
+        rw [← ptd_buffer_build_from_pt_rec ptl H (.Non_terminal_pt_ptlz ptz)]
+        simp only [ptlzBuffer]
+theorem ptd_buffer_build_from_pt_rec : {symbs : List (Symbol A.Terminal A.Nonterminal)} →
+    {word : List A.Token} → (ptl : ParseTreeList symbs word) → (H : NonNilT symbs) →
+    (ptlz : PtlZipper init full_word symbs word) →
+    word ++ₛ ptlzBuffer init full_word buffer_end ptlz =
+      ptdBuffer init full_word buffer_end (buildPtDotFromPtRec init full_word ptl H ptlz)
+  | _, _, .Nil_ptl, H, _ => H.elim
+  | _, _, .Cons_ptl ptl' pt, _, ptlz => by
+      cases ptl' with
+      | Nil_ptl =>
+        simp only [buildPtDotFromPtRec, List.nil_append]
+        rw [← ptd_buffer_build_from_pt pt (.Cons_ptl_ptz .Nil_ptl ptlz)]
+        simp only [ptzBuffer]
+        rfl
+      | Cons_ptl a b =>
+        simp only [buildPtDotFromPtRec]
+        rw [← ptd_buffer_build_from_pt_rec (.Cons_ptl a b) Unit.unit (.Cons_ptl_ptlz pt ptlz)]
+        simp only [ptlzBuffer, Stream'.append_append_stream]
+end
+
+/-- The buffer of the dotted parse tree built from a completed list
+(Coq `ptd_buffer_build_from_ptl`). -/
+theorem ptd_buffer_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal)}
+    {word : List A.Token} (ptl : ParseTreeList symbs word)
+    (ptlz : PtlZipper init full_word symbs word) :
+    ptlzBuffer init full_word buffer_end ptlz =
+      ptdBuffer init full_word buffer_end (buildPtDotFromPtl init full_word ptl ptlz) := by
+  cases ptlz with
+  | Non_terminal_pt_ptlz ptz => simp only [buildPtDotFromPtl, ptdBuffer, ptlzBuffer]
+  | Cons_ptl_ptlz pt ptlz' =>
+    simp only [buildPtDotFromPtl, ptlzBuffer]
+    rw [← ptd_buffer_build_from_pt init full_word buffer_end pt (.Cons_ptl_ptz ptl ptlz')]
+    simp only [ptzBuffer]
+
 end Completeness
 
 end LeanMenhir
