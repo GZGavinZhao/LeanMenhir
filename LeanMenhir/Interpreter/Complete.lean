@@ -329,6 +329,66 @@ theorem ptlz_future_first (hc : complete) :
             exact hfirst
   termination_by _ _ ptlz => sizeOf ptlz
 
+/-! ### Moving the dot: `build_pt_dot_from_pt` and `next_ptd` -/
+
+/-- A `Type`-valued witness that a parse-tree list is non-nil (mirrors Coq's
+`is_notnil`, but in `Type` since Lean's `Option` cannot wrap a `Prop`). -/
+abbrev NonNilT (symbs : List (Symbol A.Terminal A.Nonterminal)) : Type :=
+  match symbs with | [] => Empty | _ => Unit
+
+def nonNilProof : {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
+    ParseTreeList symbs word → Option (NonNilT symbs)
+  | _, _, .Nil_ptl => none
+  | _, _, .Cons_ptl _ _ => some Unit.unit
+
+/- Build the next dotted parse tree from a parse tree under the dot (Coq
+`build_pt_dot_from_pt` / `build_pt_dot_from_pt_rec`). -/
+mutual
+def buildPtDotFromPt : {symb : Symbol A.Terminal A.Nonterminal} → {word : List A.Token} →
+    ParseTree symb word → PtZipper init full_word symb word → PtDot init full_word
+  | _, _, .Terminal_pt tok, ptz =>
+      match ptz with
+      | .Cons_ptl_ptz ptl ptlz => .Shift_ptd tok ptl ptlz
+  | _, _, .Non_terminal_pt _ ptl, ptz =>
+      match nonNilProof ptl with
+      | none => .Reduce_ptd ptl ptz
+      | some H => buildPtDotFromPtRec ptl H (.Non_terminal_pt_ptlz ptz)
+def buildPtDotFromPtRec : {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
+    (ptl : ParseTreeList symbs word) → NonNilT symbs →
+    PtlZipper init full_word symbs word → PtDot init full_word
+  | _, _, .Nil_ptl, hsymbs, _ => hsymbs.elim
+  | _, _, .Cons_ptl ptl' pt, _, ptlz =>
+      match ptl' with
+      | .Nil_ptl => buildPtDotFromPt pt (.Cons_ptl_ptz .Nil_ptl ptlz)
+      | .Cons_ptl a b => buildPtDotFromPtRec (.Cons_ptl a b) Unit.unit (.Cons_ptl_ptlz pt ptlz)
+end
+
+/-- Build the next dotted parse tree from a completed parse-tree list under a
+zipper (Coq `build_pt_dot_from_ptl`). -/
+def buildPtDotFromPtl : {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
+    ParseTreeList symbs word → PtlZipper init full_word symbs word → PtDot init full_word
+  | _, _, ptl, .Non_terminal_pt_ptlz ptz => .Reduce_ptd ptl ptz
+  | _, _, ptl, .Cons_ptl_ptlz pt ptlz => buildPtDotFromPt init full_word pt (.Cons_ptl_ptz ptl ptlz)
+
+/-- The dotted parse tree after one parser action (Coq `next_ptd`). -/
+def nextPtd : PtDot init full_word → Option (PtDot init full_word)
+  | .Shift_ptd tok ptl ptlz =>
+      some (buildPtDotFromPtl init full_word (.Cons_ptl ptl (.Terminal_pt tok)) ptlz)
+  | .Reduce_ptd (prod := prod) (word := w) ptl ptz =>
+      match (Symbol.NT (A.prod_lhs prod) : Symbol A.Terminal A.Nonterminal), w, ptz,
+          ParseTree.Non_terminal_pt prod ptl with
+      | _, _, .Top_ptz, _ => none
+      | _, _, .Cons_ptl_ptz ptl' ptlz, pt =>
+          some (buildPtDotFromPtl init full_word (.Cons_ptl ptl' pt) ptlz)
+
+/-- Iterating `nextPtd` `2 ^ log_n_steps` times (Coq `next_ptd_iter`). -/
+def nextPtdIter : PtDot init full_word → Nat → Option (PtDot init full_word)
+  | ptd, 0 => nextPtd init full_word ptd
+  | ptd, n + 1 =>
+      match nextPtdIter ptd n with
+      | none => none
+      | some ptd' => nextPtdIter ptd' n
+
 end Completeness
 
 end LeanMenhir
