@@ -370,16 +370,22 @@ def buildPtDotFromPtl : {symbs : List (Symbol A.Terminal A.Nonterminal)} → {wo
   | _, _, ptl, .Non_terminal_pt_ptlz ptz => .Reduce_ptd ptl ptz
   | _, _, ptl, .Cons_ptl_ptlz pt ptlz => buildPtDotFromPt init full_word pt (.Cons_ptl_ptz ptl ptlz)
 
+/-- The reduce-step continuation, over a *generic* nonterminal so that `cases`
+on the zipper works (the index is a variable). Splits on whether the zipper is
+the top (parsing done) or nested. -/
+def nextPtdAux {nt : A.Nonterminal} {word : List A.Token}
+    (pt : ParseTree (.NT nt) word) (ptz : PtZipper init full_word (.NT nt) word) :
+    Option (PtDot init full_word) :=
+  match ptz, pt with
+  | .Top_ptz, _ => none
+  | .Cons_ptl_ptz ptl' ptlz, pt => some (buildPtDotFromPtl init full_word (.Cons_ptl ptl' pt) ptlz)
+
 /-- The dotted parse tree after one parser action (Coq `next_ptd`). -/
 def nextPtd : PtDot init full_word → Option (PtDot init full_word)
   | .Shift_ptd tok ptl ptlz =>
       some (buildPtDotFromPtl init full_word (.Cons_ptl ptl (.Terminal_pt tok)) ptlz)
-  | .Reduce_ptd (prod := prod) (word := w) ptl ptz =>
-      match (Symbol.NT (A.prod_lhs prod) : Symbol A.Terminal A.Nonterminal), w, ptz,
-          ParseTree.Non_terminal_pt prod ptl with
-      | _, _, .Top_ptz, _ => none
-      | _, _, .Cons_ptl_ptz ptl' ptlz, pt =>
-          some (buildPtDotFromPtl init full_word (.Cons_ptl ptl' pt) ptlz)
+  | .Reduce_ptd (prod := prod) ptl ptz =>
+      nextPtdAux init full_word (.Non_terminal_pt prod ptl) ptz
 
 /-- Iterating `nextPtd` `2 ^ log_n_steps` times (Coq `next_ptd_iter`). -/
 def nextPtdIter : PtDot init full_word → Nat → Option (PtDot init full_word)
@@ -388,6 +394,107 @@ def nextPtdIter : PtDot init full_word → Nat → Option (PtDot init full_word)
       match nextPtdIter ptd n with
       | none => none
       | some ptd' => nextPtdIter ptd' n
+
+/-! ### `build_pt_dot` preserves semantics -/
+
+/- The dotted parse tree built from a parse tree has the same semantic value
+(Coq `sem_build_from_pt` / `sem_build_from_pt_rec`). -/
+mutual
+theorem sem_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} → {word : List A.Token} →
+    (pt : ParseTree symb word) → (ptz : PtZipper init full_word symb word) →
+    ptzSem init full_word ptz (ptSem pt) =
+      ptdSem init full_word (buildPtDotFromPt init full_word pt ptz)
+  | _, _, .Terminal_pt tok, ptz => by
+      cases ptz with
+      | Cons_ptl_ptz ptl ptlz =>
+        simp only [buildPtDotFromPt, ptSem, ptdSem, ptzSem]
+  | _, _, .Non_terminal_pt prod ptl, ptz => by
+      simp only [buildPtDotFromPt, ptSem]
+      cases h : nonNilProof ptl with
+      | none => simp only [ptdSem]
+      | some H =>
+        rw [← sem_build_from_pt_rec ptl H (.Non_terminal_pt_ptlz ptz)]
+        simp only [ptlzSem]
+theorem sem_build_from_pt_rec : {symbs : List (Symbol A.Terminal A.Nonterminal)} →
+    {word : List A.Token} → (ptl : ParseTreeList symbs word) → (H : NonNilT symbs) →
+    (ptlz : PtlZipper init full_word symbs word) →
+    ptlzSem init full_word ptlz (fun _ f => ptlSem ptl f) =
+      ptdSem init full_word (buildPtDotFromPtRec init full_word ptl H ptlz)
+  | _, _, .Nil_ptl, H, _ => H.elim
+  | _, _, .Cons_ptl ptl' pt, _, ptlz => by
+      cases ptl' with
+      | Nil_ptl =>
+        simp only [buildPtDotFromPtRec]
+        rw [← sem_build_from_pt pt (.Cons_ptl_ptz .Nil_ptl ptlz)]
+        simp only [ptzSem, ptlSem]
+      | Cons_ptl a b =>
+        simp only [buildPtDotFromPtRec]
+        rw [← sem_build_from_pt_rec (.Cons_ptl a b) Unit.unit (.Cons_ptl_ptlz pt ptlz)]
+        simp only [ptlzSem, ptlSem]
+end
+
+/-- The dotted parse tree built from a completed list has the same semantic value
+(Coq `sem_build_from_ptl`). -/
+theorem sem_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal)} {word : List A.Token}
+    (ptl : ParseTreeList symbs word) (ptlz : PtlZipper init full_word symbs word) :
+    ptlzSem init full_word ptlz (fun _ f => ptlSem ptl f) =
+      ptdSem init full_word (buildPtDotFromPtl init full_word ptl ptlz) := by
+  cases ptlz with
+  | Non_terminal_pt_ptlz ptz => simp only [buildPtDotFromPtl, ptdSem, ptlzSem]
+  | Cons_ptl_ptlz pt ptlz' =>
+    simp only [buildPtDotFromPtl]
+    rw [← sem_build_from_pt init full_word pt (.Cons_ptl_ptz ptl ptlz')]
+    simp only [ptzSem, ptlzSem]
+
+/-- `nextPtdAux` preserves the semantic value. -/
+theorem sem_nextPtdAux {nt : A.Nonterminal} {word : List A.Token}
+    (pt : ParseTree (.NT nt) word) (ptz : PtZipper init full_word (.NT nt) word) :
+    match nextPtdAux init full_word pt ptz with
+    | none => True
+    | some ptd' => ptzSem init full_word ptz (ptSem pt) = ptdSem init full_word ptd' := by
+  cases ptz with
+  | Top_ptz => trivial
+  | Cons_ptl_ptz ptl' ptlz =>
+    simp only [nextPtdAux]
+    rw [← sem_build_from_ptl]
+    simp only [ptzSem, ptlSem]
+
+/-- `nextPtd` preserves the semantic value (Coq `sem_next_ptd`). -/
+theorem sem_next_ptd (ptd : PtDot init full_word) :
+    match nextPtd init full_word ptd with
+    | none => True
+    | some ptd' => ptdSem init full_word ptd = ptdSem init full_word ptd' := by
+  cases ptd with
+  | Shift_ptd tok ptl ptlz =>
+    simp only [nextPtd]
+    rw [← sem_build_from_ptl]
+    simp only [ptdSem, ptlSem, ptSem]
+  | @Reduce_ptd prod word ptl ptz =>
+    have h := sem_nextPtdAux init full_word (.Non_terminal_pt prod ptl) ptz
+    simp only [ptSem] at h
+    simp only [nextPtd, ptdSem]
+    exact h
+
+/-- `nextPtdIter` preserves the semantic value (Coq `sem_next_ptd_iter`). -/
+theorem sem_next_ptd_iter (ptd : PtDot init full_word) (logNSteps : Nat) :
+    match nextPtdIter init full_word ptd logNSteps with
+    | none => True
+    | some ptd' => ptdSem init full_word ptd = ptdSem init full_word ptd' := by
+  induction logNSteps generalizing ptd with
+  | zero => exact sem_next_ptd init full_word ptd
+  | succ n ih =>
+    have IH1 := ih ptd
+    cases h : nextPtdIter init full_word ptd n with
+    | none => simp only [nextPtdIter, h]
+    | some ptd' =>
+      rw [h] at IH1
+      simp only [nextPtdIter, h]
+      have IH2 := ih ptd'
+      cases h2 : nextPtdIter init full_word ptd' n with
+      | none => trivial
+      | some ptd'' =>
+        rw [h2] at IH2
+        exact IH1.trans IH2
 
 end Completeness
 
