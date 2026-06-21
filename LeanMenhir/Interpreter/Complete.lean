@@ -560,6 +560,132 @@ theorem ptd_buffer_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal
     rw [← ptd_buffer_build_from_pt init full_word buffer_end pt (.Cons_ptl_ptz ptl ptlz')]
     simp only [ptzBuffer]
 
+/-! ### `build_pt_dot` preserves stack compatibility -/
+
+/-- From a stack compatible with a zipper whose hole is `NT nt` (with `prod` a
+production for `nt`), the top state predicts `prod` at the dot's start. This is
+the heart of `ptd_stack_compat_build_from_pt`'s non-terminal case; phrased over a
+generic `nt` so the zipper can be `cases`d (Coq's `remember`/`destruct` step). -/
+theorem stateHasFuture_of_ptzStackCompat (hc : complete) {nt : A.Nonterminal}
+    {word : List A.Token} (ptz : PtZipper init full_word (.NT nt) word) (stk : Stack)
+    (prod : A.Production) (hprod : A.prod_lhs prod = nt)
+    (Hstk : ptzStackCompat init full_word buffer_end stk ptz) :
+    stateHasFuture (stateOfStack init stk) prod (futureOfProd prod 0)
+      (A.token_term (ptzBuffer init full_word buffer_end ptz).head) := by
+  cases ptz with
+  | Top_ptz =>
+    simp only [ptzStackCompat] at Hstk
+    subst Hstk
+    exact startFuture_of_complete hc init prod hprod _
+  | Cons_ptl_ptz ptl0 ptlz0 =>
+    simp only [ptzStackCompat] at Hstk
+    obtain ⟨stk0, Hf, _, _⟩ := Hstk
+    have hclosed := nonTerminalClosed_of_complete hc _ _ _ _ Hf
+    have hp := hclosed prod hprod
+    obtain ⟨hnull, hfirst⟩ := hp
+    simp only [ptzBuffer]
+    rcases ptlz_future_first init full_word buffer_end hc ptlz0 with hl | ⟨he, hnu⟩
+    · exact hfirst _ hl
+    · rw [he]; rw [if_pos hnu] at hnull; exact hnull
+
+/-- If `nonNilProof` says nil, the symbol list is empty. -/
+theorem nonNilProof_none_symbs {symbs : List (Symbol A.Terminal A.Nonterminal)}
+    {word : List A.Token} (ptl : ParseTreeList symbs word) (h : nonNilProof ptl = none) :
+    symbs = [] := by
+  cases ptl with
+  | Nil_ptl => rfl
+  | Cons_ptl _ _ => simp [nonNilProof] at h
+
+/-- A nil parse-tree list is stack-compatible with any stack (reflexively). -/
+theorem ptlStackCompat_nil {symbs : List (Symbol A.Terminal A.Nonterminal)} {word : List A.Token}
+    (ptl : ParseTreeList symbs word) (stk0 : Stack) (h : nonNilProof ptl = none) :
+    ptlStackCompat stk0 ptl stk0 := by
+  cases ptl with
+  | Nil_ptl => simp only [ptlStackCompat]
+  | Cons_ptl _ _ => simp [nonNilProof] at h
+
+/-- `futureOfProd` of a zipper's production at the start equals the recognised
+symbols (reversed) followed by the future. -/
+theorem futureOfProd_ptlzProd {symbs : List (Symbol A.Terminal A.Nonterminal)}
+    {word : List A.Token} (ptlz : PtlZipper init full_word symbs word) :
+    futureOfProd (ptlzProd init full_word ptlz) 0 = symbs.reverse ++ ptlzFuture init full_word ptlz := by
+  simp only [futureOfProd, List.drop_zero]
+  rw [← ptlz_future_ptlz_prod init full_word ptlz, List.reverseAux_eq]
+  simp [List.reverse_append, List.reverse_reverse]
+
+/- The dotted parse tree built from a parse tree is stack-compatible (Coq
+`ptd_stack_compat_build_from_pt` / `ptd_stack_compat_build_from_pt_rec`). -/
+mutual
+theorem ptd_stack_compat_build_from_pt (hc : complete) :
+    {symb : Symbol A.Terminal A.Nonterminal} → {word : List A.Token} →
+    (pt : ParseTree symb word) → (ptz : PtZipper init full_word symb word) → (stk : Stack) →
+    ptzStackCompat init full_word buffer_end stk ptz →
+    ptdStackCompat init full_word buffer_end (buildPtDotFromPt init full_word pt ptz) stk
+  | _, _, .Terminal_pt _, ptz, stk, Hstk => by
+      cases ptz with
+      | Cons_ptl_ptz ptl ptlz =>
+        simpa only [buildPtDotFromPt, ptdStackCompat, ptzStackCompat] using Hstk
+  | _, _, .Non_terminal_pt prod ptl, ptz, stk, Hstk => by
+      have Hassert := stateHasFuture_of_ptzStackCompat init full_word buffer_end hc ptz stk prod rfl Hstk
+      simp only [buildPtDotFromPt]
+      cases h : nonNilProof ptl with
+      | none =>
+        have hsymbs := nonNilProof_none_symbs ptl h
+        simp only [futureOfProd, hsymbs, List.reverse_nil, List.drop_nil] at Hassert
+        exact ⟨stk, Hassert, ptlStackCompat_nil ptl stk h, Hstk⟩
+      | some H =>
+        exact ptd_stack_compat_build_from_pt_rec hc ptl H (.Non_terminal_pt_ptlz ptz) stk
+          (by simpa only [ptlzStackCompat] using Hstk)
+          (by simpa only [ptlzProd, ptlzLookahead] using Hassert)
+theorem ptd_stack_compat_build_from_pt_rec (hc : complete) :
+    {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
+    (ptl : ParseTreeList symbs word) → (H : NonNilT symbs) →
+    (ptlz : PtlZipper init full_word symbs word) → (stk : Stack) →
+    ptlzStackCompat init full_word buffer_end stk ptlz →
+    stateHasFuture (stateOfStack init stk) (ptlzProd init full_word ptlz)
+      (futureOfProd (ptlzProd init full_word ptlz) 0) (ptlzLookahead init full_word buffer_end ptlz) →
+    ptdStackCompat init full_word buffer_end (buildPtDotFromPtRec init full_word ptl H ptlz) stk
+  | _, _, .Nil_ptl, H, _, _, _, _ => H.elim
+  | _, _, .Cons_ptl ptl' pt, _, ptlz, stk, Hstk, Hfut => by
+      cases ptl' with
+      | Nil_ptl =>
+        simp only [buildPtDotFromPtRec]
+        rw [futureOfProd_ptlzProd init full_word ptlz] at Hfut
+        simp only [List.reverse_cons, List.reverse_nil, List.nil_append] at Hfut
+        apply ptd_stack_compat_build_from_pt hc pt (.Cons_ptl_ptz .Nil_ptl ptlz) stk
+        exact ⟨stk, Hfut, by simp only [ptlStackCompat], Hstk⟩
+      | Cons_ptl a b =>
+        simp only [buildPtDotFromPtRec]
+        exact ptd_stack_compat_build_from_pt_rec hc (.Cons_ptl a b) Unit.unit
+          (.Cons_ptl_ptlz pt ptlz) stk
+          (by simpa only [ptlzStackCompat] using Hstk)
+          (by simpa only [ptlzProd, ptlzLookahead] using Hfut)
+end
+
+/-- The dotted parse tree built from a completed list is stack-compatible (Coq
+`ptd_stack_compat_build_from_ptl`). -/
+theorem ptd_stack_compat_build_from_ptl (hc : complete)
+    {symbs : List (Symbol A.Terminal A.Nonterminal)} {word : List A.Token}
+    (ptl : ParseTreeList symbs word) (ptlz : PtlZipper init full_word symbs word)
+    (stk stk0 : Stack) (Hstk0 : ptlzStackCompat init full_word buffer_end stk0 ptlz)
+    (Hstk : ptlStackCompat stk0 ptl stk)
+    (Hfut : stateHasFuture (stateOfStack init stk) (ptlzProd init full_word ptlz)
+      (ptlzFuture init full_word ptlz) (ptlzLookahead init full_word buffer_end ptlz)) :
+    ptdStackCompat init full_word buffer_end (buildPtDotFromPtl init full_word ptl ptlz) stk := by
+  cases ptlz with
+  | Non_terminal_pt_ptlz ptz =>
+    simp only [buildPtDotFromPtl, ptdStackCompat]
+    refine ⟨stk0, ?_, Hstk, ?_⟩
+    · simpa only [ptlzProd, ptlzFuture, ptlzLookahead] using Hfut
+    · simpa only [ptlzStackCompat] using Hstk0
+  | Cons_ptl_ptlz pt ptlz' =>
+    simp only [buildPtDotFromPtl]
+    apply ptd_stack_compat_build_from_pt init full_word buffer_end hc pt (.Cons_ptl_ptz ptl ptlz') stk
+    simp only [ptzStackCompat]
+    refine ⟨stk0, ?_, Hstk, ?_⟩
+    · simpa only [ptlzProd, ptlzFuture, ptlzLookahead] using Hfut
+    · simpa only [ptlzStackCompat] using Hstk0
+
 end Completeness
 
 end LeanMenhir
