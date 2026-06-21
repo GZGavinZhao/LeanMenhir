@@ -9,6 +9,7 @@ import LeanMenhir.Validator.Safe
 import LeanMenhir.Validator.Complete
 import LeanMenhir.Interpreter
 import LeanMenhir.Interpreter.Correct
+import LeanMenhir.Interpreter.Complete
 import LeanMenhir.Main
 import LeanMenhir.Generator.FinAlphabet
 import LeanMenhir.Generator.Tables

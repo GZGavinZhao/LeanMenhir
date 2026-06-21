@@ -73,11 +73,55 @@ Key insights:
   `Array.toList.contains`). `native_decide` scales to large grammars but trusts
   the compiler. We offer both.
 
-## Remaining / future work
+## M4 — Completeness (in progress)
 
-- M4: completeness validator (`Validator_complete.v`) + `Interpreter_complete.v`
-  (`parse_complete`, `unambiguity`). Needs `items_of_state` + ordered terminal
-  sets/maps. The generator already records LR(1) items per state internally.
+Porting `Validator_complete.v` + `Interpreter_complete.v`.
+
+**Done (builds clean, `sorry`-free):**
+- `LeanMenhir/Validator/Complete.lean` — **complete.** The 8 invariants
+  (`nullableStable`, `firstStable`, `startFuture`, `terminalShift`, `endReduce`,
+  `nonTerminalGoto`, `startGoto`, `nonTerminalClosed`) bundled as `complete`; the
+  boolean validator `isComplete`; and `complete_is_validator`. `stateHasFuture`
+  is defined directly over `items_of_state` (membership) instead of Coq's
+  AVL `FSet`/`FMap`; lookahead/first sets are plain `List`s. (The interpreter
+  proof uses the 8 properties abstractly, so this is invisible there.)
+- `LeanMenhir/Interpreter/Complete.lean` — **most of it:**
+  - Part 1: `nullable_correct`/`first_correct` (fixpoint correctness),
+    `first_word_set_app`, `ptlStackCompat` + `pop_stack_compat_pop_spec`.
+  - Part 2: `PtZipper`/`PtlZipper`/`PtDot` (dotted parse trees), `ptdSem`,
+    `ptdBuffer`, `ptlzProd`/`ptlzFuture`/`ptlzLookahead`,
+    `ptz/ptlz/ptdStackCompat`, and helpers `ptlz_future_ptlz_prod`,
+    `ptlz_future_first`, `ptz_stack_compat_cons_state_has_future`.
+  - Part 3: `buildPtDotFromPt`/`_rec`/`_ptl`, `nextPtd`/`nextPtdIter`, and ALL
+    four families of preservation lemmas: `sem_*`, `ptd_buffer_*`,
+    `ptd_stack_compat_*` (incl. `stateHasFuture_of_ptzStackCompat`), and
+    `ptd_cost_*` / `next_ptd_cost` / `next_ptd_iter_cost` (the 2^log_n_steps
+    fuel bound).
+  - `pop_eq_of_popSpec` (reverse of `pop_spec_ok`).
+
+**Remaining (Part 4 + wiring):**
+- `reduce_step_next_ptd`, `step_next_ptd`, `parse_fix_next_ptd_iter`,
+  `parse_complete` — the step-correspondence lemmas relating the interpreter
+  (`reduceStep`/`step`/`parseFix`/`parse`) to the `nextPtd` traversal.
+- `Main.parse_complete` + `unambiguity`.
+
+**Two specific Lean obstacles identified for Part 4** (both tractable, need care):
+  1. *Evaluating `reduceStep`.* Its body has `let`-bound proof arguments
+     (`hpref`) and a `match hpop : pop … with`; `rw [hpop]` fails ("motive not
+     type correct" / proof-irrelevant `hpref` mismatch). `simp only [hpop]`
+     rewrites value positions but not the `match`-discriminant. The working
+     route is `unfold reduceStep; simp only [hpop]; split` (split the goto
+     match) + `some`-injectivity + cast/`cast_heq` reconciliation, mirroring how
+     `Interpreter/Correct.lean`'s `reduceStep_sound` splits.
+  2. *Casing the zipper at a fixed nonterminal index.* `ptz : PtZipper init
+     full_word (.NT (prod_lhs prod)) word` — `cases ptz` fails on the `Top_ptz`
+     branch ("failed to solve `prod_lhs prod = start_nt init`"). Needs a
+     generic-nonterminal helper (`ptz : PtZipper … (.NT nt) word`, `nt` a
+     variable, `hnt : prod_lhs prod = nt`) where `cases ptz` works, with HEq/cast
+     bridging at the `nt := prod_lhs prod` call site. (`nextPtdAux`,
+     `sem_nextPtdAux`, `cost_nextPtdAux` already use this generic-`nt` pattern.)
+
+## Remaining / future work
 - Cosmetic: `automatonOfTables` reducible-instance warning.
 - BNFC `--lean` backend integration to emit `Grammar0` from `.cf` files.
 - [ ] M2 — `Interpreter.lean` (executable)
