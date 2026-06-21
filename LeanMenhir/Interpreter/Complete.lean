@@ -686,6 +686,140 @@ theorem ptd_stack_compat_build_from_ptl (hc : complete)
     · simpa only [ptlzProd, ptlzFuture, ptlzLookahead] using Hfut
     · simpa only [ptlzStackCompat] using Hstk0
 
+/-! ### Cost (number of actions left) and fuel accounting -/
+
+/- The number of parser actions left before completion (Coq `ptlz_cost` /
+`ptz_cost`). -/
+mutual
+def ptlzCost : {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
+    PtlZipper init full_word holeSymbs holeWord → Nat
+  | _, _, .Non_terminal_pt_ptlz ptz => ptzCost ptz
+  | _, _, .Cons_ptl_ptlz pt ptlz' => ptSize pt + ptlzCost ptlz'
+def ptzCost : {holeSymb : Symbol A.Terminal A.Nonterminal} → {holeWord : List A.Token} →
+    PtZipper init full_word holeSymb holeWord → Nat
+  | _, _, .Top_ptz => 0
+  | _, _, .Cons_ptl_ptz _ ptlz' => 1 + ptlzCost ptlz'
+end
+
+/-- The cost of a dotted parse tree (Coq `ptd_cost`). -/
+def ptdCost : PtDot init full_word → Nat
+  | .Reduce_ptd _ ptz => ptzCost init full_word ptz
+  | .Shift_ptd _ _ ptlz => 1 + ptlzCost init full_word ptlz
+
+/-- If `nonNilProof` says nil, the list has size zero. -/
+theorem nonNilProof_none_size {symbs : List (Symbol A.Terminal A.Nonterminal)}
+    {word : List A.Token} (ptl : ParseTreeList symbs word) (h : nonNilProof ptl = none) :
+    ptlSize ptl = 0 := by
+  cases ptl with
+  | Nil_ptl => rfl
+  | Cons_ptl _ _ => simp [nonNilProof] at h
+
+/- Building a dotted parse tree from a parse tree accounts for one extra action
+(Coq `ptd_cost_build_from_pt` / `ptd_cost_build_from_pt_rec`). -/
+mutual
+theorem ptd_cost_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} →
+    {word : List A.Token} → (pt : ParseTree symb word) → (ptz : PtZipper init full_word symb word) →
+    ptSize pt + ptzCost init full_word ptz =
+      ptdCost init full_word (buildPtDotFromPt init full_word pt ptz) + 1
+  | _, _, .Terminal_pt _, ptz => by
+      cases ptz with
+      | Cons_ptl_ptz ptl ptlz =>
+        simp only [buildPtDotFromPt, ptdCost, ptzCost, ptSize]; omega
+  | _, _, .Non_terminal_pt prod ptl, ptz => by
+      simp only [buildPtDotFromPt, ptSize]
+      cases h : nonNilProof ptl with
+      | none =>
+        have hsz := nonNilProof_none_size ptl h
+        simp only [ptdCost]; omega
+      | some H =>
+        rw [← ptd_cost_build_from_pt_rec ptl H (.Non_terminal_pt_ptlz ptz)]
+        simp only [ptlzCost]; omega
+theorem ptd_cost_build_from_pt_rec : {symbs : List (Symbol A.Terminal A.Nonterminal)} →
+    {word : List A.Token} → (ptl : ParseTreeList symbs word) → (H : NonNilT symbs) →
+    (ptlz : PtlZipper init full_word symbs word) →
+    ptlSize ptl + ptlzCost init full_word ptlz =
+      ptdCost init full_word (buildPtDotFromPtRec init full_word ptl H ptlz)
+  | _, _, .Nil_ptl, H, _ => H.elim
+  | _, _, .Cons_ptl ptl' pt, _, ptlz => by
+      cases ptl' with
+      | Nil_ptl =>
+        simp only [buildPtDotFromPtRec, ptlSize]
+        have := ptd_cost_build_from_pt pt (.Cons_ptl_ptz .Nil_ptl ptlz)
+        simp only [ptzCost] at this
+        omega
+      | Cons_ptl a b =>
+        simp only [buildPtDotFromPtRec, ptlSize]
+        rw [← ptd_cost_build_from_pt_rec (.Cons_ptl a b) Unit.unit (.Cons_ptl_ptlz pt ptlz)]
+        simp only [ptlzCost, ptlSize]; omega
+end
+
+/-- The cost of the dotted parse tree built from a completed list
+(Coq `ptd_cost_build_from_ptl`). -/
+theorem ptd_cost_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal)}
+    {word : List A.Token} (ptl : ParseTreeList symbs word)
+    (ptlz : PtlZipper init full_word symbs word) :
+    ptlzCost init full_word ptlz = ptdCost init full_word (buildPtDotFromPtl init full_word ptl ptlz) := by
+  cases ptlz with
+  | Non_terminal_pt_ptlz ptz => simp only [buildPtDotFromPtl, ptdCost, ptlzCost]
+  | Cons_ptl_ptlz pt ptlz' =>
+    simp only [buildPtDotFromPtl, ptlzCost]
+    have := ptd_cost_build_from_pt init full_word pt (.Cons_ptl_ptz ptl ptlz')
+    simp only [ptzCost] at this
+    omega
+
+/-- `nextPtdAux` cost accounting. -/
+theorem cost_nextPtdAux {nt : A.Nonterminal} {word : List A.Token}
+    (pt : ParseTree (.NT nt) word) (ptz : PtZipper init full_word (.NT nt) word) :
+    match nextPtdAux init full_word pt ptz with
+    | none => ptzCost init full_word ptz = 0
+    | some ptd' => ptzCost init full_word ptz = ptdCost init full_word ptd' + 1 := by
+  cases ptz with
+  | Top_ptz => simp only [nextPtdAux, ptzCost]
+  | Cons_ptl_ptz ptl' ptlz =>
+    simp only [nextPtdAux, ptzCost]
+    rw [ptd_cost_build_from_ptl init full_word (.Cons_ptl ptl' pt) ptlz]
+    omega
+
+/-- `nextPtd` cost accounting (Coq `next_ptd_cost`). -/
+theorem next_ptd_cost (ptd : PtDot init full_word) :
+    match nextPtd init full_word ptd with
+    | none => ptdCost init full_word ptd = 0
+    | some ptd' => ptdCost init full_word ptd = ptdCost init full_word ptd' + 1 := by
+  cases ptd with
+  | Shift_ptd tok ptl ptlz =>
+    simp only [nextPtd]
+    rw [← ptd_cost_build_from_ptl init full_word (.Cons_ptl ptl (.Terminal_pt tok)) ptlz]
+    simp only [ptdCost]; omega
+  | @Reduce_ptd prod word ptl ptz =>
+    have h := cost_nextPtdAux init full_word (.Non_terminal_pt prod ptl) ptz
+    simp only [nextPtd, ptdCost]
+    exact h
+
+/-- `nextPtdIter` cost accounting (Coq `next_ptd_iter_cost`). -/
+theorem next_ptd_iter_cost (ptd : PtDot init full_word) (logNSteps : Nat) :
+    match nextPtdIter init full_word ptd logNSteps with
+    | none => ptdCost init full_word ptd < 2 ^ logNSteps
+    | some ptd' => ptdCost init full_word ptd = 2 ^ logNSteps + ptdCost init full_word ptd' := by
+  induction logNSteps generalizing ptd with
+  | zero =>
+    have h := next_ptd_cost init full_word ptd
+    simp only [nextPtdIter, pow_zero]
+    cases hn : nextPtd init full_word ptd with
+    | none => rw [hn] at h; omega
+    | some ptd' => rw [hn] at h; omega
+  | succ n ih =>
+    have hp : (2 : Nat) ^ (n + 1) = 2 ^ n + 2 ^ n := by rw [pow_succ]; ring
+    have IH1 := ih ptd
+    cases h : nextPtdIter init full_word ptd n with
+    | none => rw [h] at IH1; simp only [nextPtdIter, h]; omega
+    | some ptd' =>
+      rw [h] at IH1
+      have IH2 := ih ptd'
+      simp only [nextPtdIter, h]
+      cases h2 : nextPtdIter init full_word ptd' n with
+      | none => simp only [h2] at IH2 ⊢; omega
+      | some ptd'' => simp only [h2] at IH2 ⊢; omega
+
 end Completeness
 
 end LeanMenhir
