@@ -43,19 +43,26 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
   `step_sound`, `parseFix_sound`, and the user-facing `Main.parse_correct` are all
   proved. `#print axioms Main.parse_correct` = `{propext, Classical.choice,
   Quot.sound}` (no `sorryAx`).
-- **Native LR(1) generator (untrusted, `partial def`) — WORKING:**
+- **Native LR generator (untrusted, `partial def`) — WORKING:**
   `Generator/FinAlphabet` (Fin alphabets), `Generator/Tables`
   (`GenTables` + `automatonOfTables`: rebuilds the dependent `Automaton` from
   index data, reconstructing `Shift_act`/`goto` proofs via `DecidableEq`),
-  `Generator/LR1` (canonical LR(1): nullable/first, closure/goto, state
-  collection, action/goto tables, stack-shape fixpoints for `past_symb`/
-  `past_state`).
+  `Generator/LR1`: `buildTables` (canonical LR(1)) and `buildTablesSLR`
+  (**SLR(1)** — LR(0) states + `FOLLOW`-set reduce lookaheads, so far fewer states
+  than canonical LR(1): MiniCalc 33→18). Both share nullable/first, closure/goto,
+  state collection, action/goto tables, and the `past_symb`/`past_state`
+  stack-shape fixpoints. SLR items carry `FOLLOW(lhs)` (start items the full
+  alphabet), which satisfies the completeness validator for conflict-free SLR
+  grammars; if SLR introduces a conflict the `isComplete` certificate simply fails
+  (soundness still holds). Both example grammars validate `isSafe` *and*
+  `isComplete` under SLR.
 - **End-to-end demos — WORKING (two complementary paths):**
   - `Examples/Arith` — left-recursive `E → E + num | num`, tables straight from
-    the in-Lean `Grammar0.buildTables` (`partial`, self-contained), safety by
+    the in-Lean `Grammar0.buildTablesSLR` (`partial`, self-contained), safety by
     `native_decide`. Showcases the fully self-contained generator path.
   - `Examples/MiniCalc` — the real rocq-minicalc grammar (precedence, parens, a
-    lexer, AST printer): 33-state automaton, tables emitted by `Gen.emitTables`
+    lexer, AST printer): SLR(1) automaton (18 states, vs 33 for canonical LR(1)),
+    tables emitted by `Gen.emitTables`
     as a concrete literal, safety certified by **kernel `decide`**
     (`minicalcSafe` axioms = `{propext, Quot.sound}` — *no* `Lean.ofReduceBool`/
     compiler-trust). Value tests (`1+2*3`, `(1+2)*3`, `1-2-3`, the Coq demo's

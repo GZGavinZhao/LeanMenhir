@@ -35,8 +35,9 @@ def grammar : Grammar0 where
     (1, #[.term 0])                         -- p2 : E → num
   ]
 
-/-- The generated LR(1) tables (untrusted). -/
-def tables : GenTables := grammar.buildTables
+/-- The generated LR tables (untrusted) — built with the **SLR(1)** generator
+(`buildTablesSLR`); the `isSafe`/`isComplete` validators certify the result. -/
+def tables : GenTables := grammar.buildTablesSLR
 
 /-- Semantic actions over `Nat` (`collectArrows` supplies the popped values in
 reverse-RHS order, i.e. last symbol first). -/

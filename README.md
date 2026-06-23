@@ -34,16 +34,18 @@ verify the (large, fiddly) LR table-construction algorithm.
   and the theorems `parse_correct` (soundness), `parse_complete` (completeness),
   and `unambiguity`. **No `sorry`** (axioms: `propext`, `Classical.choice`,
   `Quot.sound`).
-* `LeanMenhir/Generator/` — the untrusted native LR(1) generator
-  (`LR1.lean`, incl. `emitTables` for concrete output) and the
-  `automatonOfTables` bridge that rebuilds a genuine `Automaton` from index data.
+* `LeanMenhir/Generator/` — the untrusted native LR generator (`LR1.lean`:
+  `buildTables` = canonical LR(1), `buildTablesSLR` = SLR(1) with far fewer states;
+  incl. `emitTables` for concrete output) and the `automatonOfTables` bridge that
+  rebuilds a genuine `Automaton` from index data.
 * `LeanMenhir/Examples/Arith.lean` — a generated parser for the **left-recursive**
   grammar `E → E + num | num` (which PEG/recursive-descent backends parse
-  incorrectly); fully self-contained (in-Lean `buildTables`), with safety *and*
+  incorrectly); fully self-contained (in-Lean `buildTablesSLR`), with safety *and*
   completeness certificates by `native_decide`, and the instantiated
   `arith_correct` / `arith_parses` / `arith_unambiguous`.
 * `LeanMenhir/Examples/MiniCalc.lean` — the real `rocq-minicalc` grammar
-  (precedence, parens, lexer, AST printer); 33-state generated automaton whose
+  (precedence, parens, lexer, AST printer); SLR(1) generated automaton (18 states,
+  vs 33 for canonical LR(1)) whose
   safety *and* completeness certificates are discharged by **kernel `decide`**
   (axioms `{propext, Quot.sound}` — *no* compiler-trust axiom), with the
   instantiated `mini_parses` / `mini_unambiguous`. Parses `12 + 34*x / (48+y)`

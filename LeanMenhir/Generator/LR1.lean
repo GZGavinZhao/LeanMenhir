@@ -85,6 +85,47 @@ def firstOfSeq (nl : Array Bool) (fst : Array (List Nat)) :
       if nl.getD j false then unionN (fst.getD j []) (firstOfSeq nl fst rest la)
       else fst.getD j []
 
+/-- FIRST of a symbol sequence (no trailing lookahead); used for `FOLLOW`. -/
+def firstOfRest (nl : Array Bool) (fst : Array (List Nat)) : List GSym → List Nat
+  | [] => []
+  | .term t :: _ => [t]
+  | .nonterm j :: rest =>
+      if nl.getD j false then unionN (fst.getD j []) (firstOfRest nl fst rest)
+      else fst.getD j []
+
+/-- Whether a symbol sequence is nullable. -/
+def seqNullableList (nl : Array Bool) : List GSym → Bool
+  | [] => true
+  | .term _ :: _ => false
+  | .nonterm j :: rest => nl.getD j false && seqNullableList nl rest
+
+/-- `FOLLOW` sets (used by the SLR(1) generator). `FOLLOW(start)` is seeded with
+every terminal *including the padded dummy* `numTerm`, because the completeness
+validator's `start_future` quantifies over the whole terminal alphabet `Fin
+(numTerm+1)`; this is consistent since the start nonterminal never appears in any
+RHS. Standard fixpoint: for `B → α C β`, `FOLLOW(C) ⊇ first(β)`, and if `β` is
+nullable `FOLLOW(C) ⊇ FOLLOW(B)`. -/
+partial def computeFollow (nl : Array Bool) (fst : Array (List Nat)) : Array (List Nat) := Id.run do
+  let mut cur : Array (List Nat) := Array.replicate g.numNonterm []
+  cur := cur.set! g.start (List.range (g.numTerm + 1))
+  let mut changed := true
+  while changed do
+    changed := false
+    for p in g.prods do
+      let (lhs, rhs) := p
+      let lst := rhs.toList
+      for i in [0:lst.length] do
+        match lst.getD i (.term 0) with
+        | .nonterm c =>
+            let rest := lst.drop (i + 1)
+            let add := unionN (firstOfRest nl fst rest)
+              (if seqNullableList nl rest then cur.getD lhs [] else [])
+            let old := cur.getD c []
+            let new := unionN add old
+            if new.length != old.length then cur := cur.set! c new; changed := true
+        | _ => pure ()
+  return cur
+
 end Grammar0
 
 /-! ### LR(1) items and states -/
@@ -137,6 +178,34 @@ def goto (items : List Item) (x : GSym) : List Item :=
     | some y => if y == x then some (⟨it.prod, it.dot + 1, it.la⟩ : Item) else none
     | none => none)
   closure g nl fst moved
+
+/-- LR(0) closure: add `B → ·γ` for every production of every nonterminal that
+appears immediately after a dot. Lookaheads are ignored (kept at `0`), so states
+are LR(0) cores — never split by lookahead (this is what keeps SLR/LALR small). -/
+partial def closureLR0 (items : List Item) : List Item := Id.run do
+  let mut work := items
+  let mut acc : List Item := normItems items
+  while !work.isEmpty do
+    let it := work.head!
+    work := work.tail!
+    match afterDot g it with
+    | some (.nonterm b) =>
+        for p in [0:g.numProd] do
+          if g.lhsOf p == b then
+            let ni : Item := ⟨p, 0, 0⟩
+            if !(acc.contains ni) then
+              acc := ni :: acc
+              work := ni :: work
+    | _ => pure ()
+  return acc
+
+/-- LR(0) `goto`. -/
+def gotoLR0 (items : List Item) (x : GSym) : List Item :=
+  let moved := items.filterMap (fun it =>
+    match afterDot g it with
+    | some y => if y == x then some (⟨it.prod, it.dot + 1, 0⟩ : Item) else none
+    | none => none)
+  g.closureLR0 moved
 
 /-- All symbols appearing immediately after a dot in an item set. -/
 def nextSymbols (items : List Item) : List GSym :=
@@ -297,6 +366,133 @@ partial def buildTables : GenTables := Id.run do
     nullable := nl
     first := fst.map List.toArray
     items := states.map (fun its => (its.map (fun it => (it.prod, it.dot, it.la))).toArray)
+  }
+
+/-- The **SLR(1)** automaton's `GenTables`. States are LR(0) cores (so the count
+matches the LR(0) automaton — far fewer than canonical LR(1), which splits states
+by lookahead); reduce actions and the per-state items carry `FOLLOW`-set
+lookaheads. Untrusted like `buildTables`: the `isSafe`/`isComplete` validators
+certify the result, so SLR-specific conflicts (more likely than with LALR/LR(1))
+simply make the completeness certificate fail rather than yield a wrong parser. -/
+partial def buildTablesSLR : GenTables := Id.run do
+  let nl := g.computeNullable
+  let fst := g.computeFirst nl
+  let follow := g.computeFollow nl fst
+  -- LR(0) initial item set (no lookaheads).
+  let initItems : List Item := Id.run do
+    let mut acc : List Item := []
+    for p in [0:g.numProd] do
+      if g.lhsOf p == g.start then acc := ⟨p, 0, 0⟩ :: acc
+    return g.closureLR0 acc
+  let mut states : Array (List Item) := #[initItems]
+  let mut incoming : Array (Option GSym) := #[none]
+  let mut transitions : Array (List (GSym × Nat)) := #[[]]
+  let mut frontier : List Nat := [0]
+  while !frontier.isEmpty do
+    let si := frontier.head!
+    frontier := frontier.tail!
+    let items := states.getD si []
+    for x in g.nextSymbols items do
+      let tItems := g.gotoLR0 items x
+      let mut found : Option Nat := none
+      for j in [0:states.size] do
+        if itemsEq (states.getD j []) tItems then found := some j
+      match found with
+      | some j => transitions := transitions.set! si ((x, j) :: transitions.getD si [])
+      | none =>
+          let j := states.size
+          states := states.push tItems
+          incoming := incoming.push (some x)
+          transitions := transitions.push []
+          transitions := transitions.set! si ((x, j) :: transitions.getD si [])
+          frontier := j :: frontier
+  let numStates := states.size
+  -- action table: shift from transitions; reduce a complete item `A → α·` on
+  -- every terminal in `FOLLOW(A)`.
+  let mkAction (si : Nat) : GAction := Id.run do
+    let items := states.getD si []
+    let trans := transitions.getD si []
+    let shifts : List (Nat × Nat) := trans.filterMap (fun (x, t) =>
+      match x with | .term tm => some (tm, t) | _ => none)
+    let completes : List (Nat × Nat) := items.flatMap (fun it =>
+      if it.dot == (g.rhsOf it.prod).size then
+        (follow.getD (g.lhsOf it.prod) []).map (fun la => (la, it.prod))
+      else [])
+    let reduceProds : List Nat := completes.foldl (fun acc (_, p) =>
+      if acc.contains p then acc else p :: acc) []
+    if shifts.isEmpty && reduceProds.length == 1 then
+      return GAction.defaultReduce (reduceProds.head!)
+    else
+      let arr : Array GLookahead := Id.run do
+        let mut a : Array GLookahead := Array.replicate g.numTerm GLookahead.fail
+        for (tm, t) in shifts do
+          if tm < g.numTerm then a := a.set! tm (GLookahead.shift t)
+        for (la, p) in completes do
+          if la < g.numTerm && (a.getD la GLookahead.fail matches GLookahead.fail) then
+            a := a.set! la (GLookahead.reduce p)
+        return a
+      return GAction.lookahead arr
+  let action : Array GAction := (Array.range numStates).map mkAction
+  let gotoTab : Array (Array (Option Nat)) := (Array.range numStates).map (fun si =>
+    let trans := transitions.getD si []
+    (Array.range g.numNonterm).map (fun nt =>
+      (trans.find? (fun (x, _) => x == GSym.nonterm nt)).map Prod.snd))
+  let preds : Array (List Nat) := Id.run do
+    let mut p : Array (List Nat) := Array.replicate numStates []
+    for si in [0:numStates] do
+      for (_, t) in transitions.getD si [] do
+        p := p.set! t (si :: p.getD t [])
+    return p
+  let headShapeOf (pastSymb : Array (List GSym)) (s : Nat) : List GSym :=
+    if s == 0 then []
+    else match incoming.getD s none with
+         | some x => x :: pastSymb.getD s []
+         | none => []
+  let pastSymb : Array (List GSym) := Id.run do
+    let mut cur : Array (List GSym) := Array.replicate numStates []
+    let mut changed := true
+    while changed do
+      changed := false
+      for s in [1:numStates] do
+        let new := commonPrefixSymAll ((preds.getD s []).map (headShapeOf cur))
+        if new != cur.getD s [] then cur := cur.set! s new; changed := true
+    return cur
+  let stateHeadShapeOf (pastState : Array (List (List Nat))) (s : Nat) : List (List Nat) :=
+    [s] :: pastState.getD s []
+  let pastState : Array (List (List Nat)) := Id.run do
+    let mut cur : Array (List (List Nat)) := Array.replicate numStates []
+    let mut changed := true
+    while changed do
+      changed := false
+      for s in [1:numStates] do
+        let merged : List (List Nat) :=
+          match (preds.getD s []).map (stateHeadShapeOf cur) with
+          | [] => []
+          | h :: t => t.foldl mergeStateSets h
+        let truncated := merged.take ((pastSymb.getD s []).length + 1)
+        if truncated != cur.getD s [] then cur := cur.set! s truncated; changed := true
+    return cur
+  return {
+    numTerm := g.numTerm
+    numNonterm := g.numNonterm
+    numProd := g.numProd
+    numStates := numStates
+    startNonterm := g.start
+    prodLhs := (Array.range g.numProd).map g.lhsOf
+    prodRhsRev := (Array.range g.numProd).map (fun p => (g.rhsOf p).reverse)
+    incoming := incoming
+    action := action
+    goto := gotoTab
+    pastSymb := pastSymb.map (fun l => l.toArray)
+    pastStateSets := pastState.map (fun l => (l.map List.toArray).toArray)
+    nullable := nl
+    first := fst.map List.toArray
+    -- each LR(0) item `A → α·β` carries `FOLLOW(A)` (start items thereby carry
+    -- the full alphabet); this satisfies the completeness validator's item
+    -- invariants for a conflict-free SLR(1) grammar.
+    items := states.map (fun its =>
+      (its.flatMap (fun it =>
+        (follow.getD (g.lhsOf it.prod) []).map (fun la => (it.prod, it.dot, la)))).toArray)
   }
 
 end Grammar0
