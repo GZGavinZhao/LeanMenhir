@@ -166,6 +166,110 @@ def automatonOfTables : Automaton where
   nullable_nterm := fun nt => if nt.val < g.numNonterm then g.nullable.getD nt.val false else true
   first_nterm := fun nt => (g.first.getD nt.val #[]).toList.map (cl g.numTerm)
 
+/-! ### Heterogeneous (typed) bridge
+
+`automatonOfTables` above keeps semantic values *monomorphic* (one `Val` for every
+symbol), which forces an AST-producing front-end (e.g. BNFC) to encode every
+category in a tagged union and *project* it back out in each action — and to
+fabricate `Inhabited` defaults for the never-reached projection branches.
+
+`automatonOfTablesTyped` instead lets each symbol carry its own type:
+`termType t` for terminal `t` and `ntType n` for nonterminal `n`. Actions are
+then ordinary typed functions that build the AST directly (no union, no
+projection, no `Inhabited`). The verified interpreter and the safety/completeness
+validators are generic over `symbol_semantic_type`, so they accept this automaton
+unchanged.
+
+The only values ever conjured "from nothing" are `()` at `Unit`: the dummy
+padding production (its lhs is the dummy nonterminal, so set `ntType dummyNt :=
+Unit`) and the EOF/keyword token payloads (set their `termType := Unit`). No AST
+category ever needs a default.
+
+For the dependent dispatcher `actions` to be writable by the caller, the
+production data of `g` must *reduce* — i.e. `g` is a concrete `GenTables` literal
+(the emitted-tables path, certified by kernel `decide`), not an opaque
+`buildTablesSLR` result. -/
+
+/-- The (heterogeneous) semantic-value type of a symbol: `termType` for a
+terminal, `ntType` for a nonterminal. -/
+def symTypeOf (g : GenTables)
+    (ntType : Fin (g.numNonterm + 1) → Type) (termType : Fin (g.numTerm + 1) → Type) :
+    Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1)) → Type
+  | .T t => termType t
+  | .NT n => ntType n
+
+/-- The lhs nonterminal of a production (real productions use their stored lhs;
+the dummy padding production `numProd` maps to the dummy nonterminal `numNonterm`).
+Shared between the `prod_lhs` field and the dependent `actions` parameter type so
+the two are definitionally equal. -/
+def prodLhsOf (g : GenTables) (p : Fin (g.numProd + 1)) : Fin (g.numNonterm + 1) :=
+  if p.val < g.numProd then cl g.numNonterm (g.prodLhs.getD p.val 0)
+  else cl g.numNonterm g.numNonterm
+
+/-- The reversed RHS of a production as grammar symbols. Shared between the
+`prod_rhs_rev` field and the dependent `actions` parameter type. -/
+def prodRhsRevOf (g : GenTables) (p : Fin (g.numProd + 1)) :
+    List (Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1))) :=
+  (g.prodRhsRev.getD p.val #[]).toList.map (gsymToSymbol g)
+
+/-- Build an `Automaton` from the (untrusted) index-only tables `g` with
+*heterogeneous* semantic values: terminal `t` carries a `termType t`, nonterminal
+`n` carries an `ntType n`, and the token is the dependent pair `Σ t, termType t`.
+Each production's `actions p` is its semantic action in its true curried type.
+See the section comment above. -/
+@[reducible]
+def automatonOfTablesTyped (g : GenTables)
+    (ntType : Fin (g.numNonterm + 1) → Type) (termType : Fin (g.numTerm + 1) → Type)
+    (actions : (p : Fin (g.numProd + 1)) →
+      arrowsRight (symTypeOf g ntType termType (.NT (prodLhsOf g p)))
+                  ((prodRhsRevOf g p).map (symTypeOf g ntType termType))) :
+    Automaton where
+  Terminal := Fin (g.numTerm + 1)
+  Nonterminal := Fin (g.numNonterm + 1)
+  terminalAlphabet := inferInstance
+  nonterminalAlphabet := inferInstance
+  symbol_semantic_type := symTypeOf g ntType termType
+  Production := Fin (g.numProd + 1)
+  productionAlphabet := inferInstance
+  prod_lhs := prodLhsOf g
+  prod_rhs_rev := prodRhsRevOf g
+  prod_action := actions
+  Token := (t : Fin (g.numTerm + 1)) × termType t
+  token_term := Sigma.fst
+  token_sem := Sigma.snd
+  NonInitState := Fin (g.numNonInit + 1)
+  noninitstateAlphabet := inferInstance
+  InitState := Fin 1
+  initstateAlphabet := inferInstance
+  last_symb_of_non_init_state := lastSymbOf g
+  start_nt := fun _ => cl g.numNonterm g.startNonterm
+  action_table := fun s =>
+    let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
+    gActionToAction g (g.action.getD flat (.lookahead #[]))
+  goto_table := fun s nt =>
+    let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
+    match (g.goto.getD flat #[]).getD nt.val none with
+    | none => none
+    | some t =>
+        let target : Fin (g.numNonInit + 1) := cl g.numNonInit (t - 1)
+        if h : (Symbol.NT nt : Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1)))
+            = lastSymbOf g target then some ⟨target, h⟩ else none
+  past_symb_of_non_init_state := fun n =>
+    (g.pastSymb.getD (n.val + 1) #[]).toList.map (gsymToSymbol g)
+  past_state_of_non_init_state := fun n =>
+    (g.pastStateSets.getD (n.val + 1) #[]).toList.map (fun (stateSet : Array Nat) =>
+      fun (s : State (Fin 1) (Fin (g.numNonInit + 1))) =>
+        let flat := match s with | .Init _ => 0 | .Ninit m => m.val + 1
+        stateSet.toList.contains flat)
+  items_of_state := fun s =>
+    let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
+    (g.items.getD flat #[]).toList.map (fun it =>
+      { prod_item := cl g.numProd it.1
+        dot_pos_item := it.2.1
+        lookaheads_item := [cl g.numTerm it.2.2] })
+  nullable_nterm := fun nt => if nt.val < g.numNonterm then g.nullable.getD nt.val false else true
+  first_nterm := fun nt => (g.first.getD nt.val #[]).toList.map (cl g.numTerm)
+
 end Gen
 end LeanMenhir
 
