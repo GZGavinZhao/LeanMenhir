@@ -14,5 +14,7 @@ import LeanMenhir.Main
 import LeanMenhir.Generator.FinAlphabet
 import LeanMenhir.Generator.Tables
 import LeanMenhir.Generator.LR1
+import LeanMenhir.Generator.BuildTables
 import LeanMenhir.Examples.Arith
 import LeanMenhir.Examples.MiniCalc
+import LeanMenhir.Examples.StmCalc

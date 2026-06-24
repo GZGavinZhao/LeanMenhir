@@ -66,8 +66,76 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
     as a concrete literal, safety certified by **kernel `decide`**
     (`minicalcSafe` axioms = `{propext, Quot.sound}` — *no* `Lean.ofReduceBool`/
     compiler-trust). Value tests (`1+2*3`, `(1+2)*3`, `1-2-3`, the Coq demo's
-    `12 + 34*x / (48+y)` round-trip, and rejection of `1+`/`(1+2`) run the
-    compiled parser via `native_decide`/`#eval`.
+     `12 + 34*x / (48+y)` round-trip, and rejection of `1+`/`(1+2`) run the
+     compiled parser via `native_decide`/`#eval`.
+   - `Examples/StmCalc` — a **two-category** grammar (`Exp` and `Stm` as distinct
+     AST types: `Program → Stm EOF; Stm → Exp ";"; Exp → Exp "+" Atom | Atom;
+     Atom → NUM | "(" Exp ")"`) built through the **heterogeneous** bridge
+      `Gen.automatonOfTablesTyped` (see below). SLR(1), 12 states, kernel `decide`
+      certificates (`stmSafe`/`stmComplete` axioms = `{propext, Quot.sound}`), with
+      `stm_parses`/`stm_unambiguous` corollaries and typed parse tests (`parseStm`
+      returns a `Stm` directly). Tables come from `build_tables% grammar` (strategy
+      C — generated at elaboration time, no hand-pasted literal).
+
+## Heterogeneous (typed) semantic bridge (DONE)
+
+`Gen.automatonOfTables` keeps semantic values **monomorphic** — a single `Val`
+type for every symbol — which forces an AST-producing front-end (BNFC) to encode
+all categories in a tagged union, *project* it back out in each action, and
+fabricate `Inhabited` defaults for the never-reached projection branches.
+
+`Gen.automatonOfTablesTyped` (in `Generator/Tables.lean`) instead gives every
+symbol its **own** type:
+- `symbol_semantic_type := symTypeOf g ntType termType` — `termType t` for terminal
+  `t`, `ntType n` for nonterminal `n`.
+- `Token := (t : Fin (numTerm+1)) × termType t` (a `Σ`-pair); `token_term :=
+  Sigma.fst`, `token_sem := Sigma.snd`.
+- `prod_action := actions`, where `actions` is the **dependent dispatcher**
+  `(p : Fin (numProd+1)) → arrowsRight (ntType (prodLhsOf g p)) ((prodRhsRevOf g
+  p).map symType)` — each branch an ordinary typed action building the AST
+  directly (no union, no projection).
+
+Key facts established by the prototype/port:
+- The verified interpreter and the safety/completeness validators are generic over
+  `symbol_semantic_type`, so they accept the typed automaton **unchanged** — zero
+  proof changes; same axiom sets as the monomorphic path.
+- The dependent dispatcher elaborates with plain `Fin` numeral patterns (`| 0 =>
+  … | n => …`); Lean handles exhaustiveness and reduces each branch's expected
+  type to the concrete arrow type (`prodLhsOf`/`prodRhsRevOf` are shared between
+  the field defs and the `actions` parameter type so they are definitionally
+  equal).
+- **No `Inhabited` for any AST category.** The only values conjured from nothing
+  are `()` at `Unit`: the dummy padding production (`ntType dummyNt := Unit`) and
+  the `Unit`-payload terminals (keywords/punctuation/EOF). Value-carrying tokens
+  (e.g. `NUM : Nat`) are always supplied by the lexer.
+- Constraint: the dependent `actions` requires the production data of `g` to
+  *reduce*, i.e. `g` is a **concrete `GenTables` literal** (the emitted-tables /
+  kernel-`decide` path), not an opaque `partial buildTablesSLR` result. The
+  `build_tables%` elaborator (below) satisfies this in a single build phase.
+
+This is the highest-leverage simplification for the eventual BNFC `--lean`
+backend: it emits typed actions that construct the BNFC AST directly, with no
+`Val`-union / projection / `Inhabited`-deriving plumbing.
+
+## `build_tables%` elaborator — strategy C (DONE)
+
+`Generator/BuildTables.lean` provides a term elaborator `build_tables% grammar`
+that runs the untrusted generator `Grammar0.buildTablesSLR` **at elaboration
+time** (via `Lean.Meta.evalExpr`, wrapped in the standard `unsafe` +
+`@[implemented_by]`/`opaque` pattern) and splices the result back as a **concrete
+`GenTables` literal** using `deriving ToExpr` on `GSym`/`GLookahead`/`GAction`/
+`GenTables`.
+
+This resolves the "tables must reduce" constraint of the heterogeneous bridge in
+a **single `lake build` phase** (no separate codegen executable, no hand-pasted
+literal): `def stmTables := build_tables% grammar`. The spliced literal reduces
+by `rfl`, the heterogeneous dispatcher typechecks against it, and **kernel
+`decide`** certifies `safe`/`complete` — the elaborator itself adds **no axioms**
+(it only produces a literal). `Examples/StmCalc` uses this flow. The generator
+stays untrusted: a buggy table is rejected by the validator, never accepted.
+
+This is the chosen table-generation strategy for the BNFC backend (vs (A)
+reimplement SLR in Haskell, or (B) a two-phase Lean codegen tool).
 
 Key insights:
 - `past_state` annotations are **one level longer** than `past_symb` (state-stack
@@ -176,7 +244,11 @@ Results (`Examples/Arith.lean`, `Examples/MiniCalc.lean`):
 
 ## Remaining / future work
 - Cosmetic: `automatonOfTables` reducible-instance warning.
-- BNFC `--lean` backend integration to emit `Grammar0` from `.cf` files.
+- BNFC `--lean` backend integration to emit `Grammar0` from `.cf` files. With the
+  heterogeneous bridge (`automatonOfTablesTyped`) now landed, the backend can emit
+  typed actions building the BNFC AST directly (no `Val`-union / projection /
+  `Inhabited`). Open: multi-start support; position/error plumbing; the
+  `Reg → Lean` lexer compiler.
 - [x] M2 — `Interpreter.lean` (executable)
 - [x] M3 — Soundness (`Validator/Classes`, `Validator/Safe`, `Interpreter/Correct`, `Main.parse_correct`)
 - [x] M4 — Completeness + unambiguity
