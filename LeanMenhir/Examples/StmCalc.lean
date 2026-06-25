@@ -101,7 +101,7 @@ def actions : (p : Fin (stmTables.numProd + 1)) →
 
 /-- The verified automaton built from the generated tables via the heterogeneous
 bridge. -/
-instance automaton : Automaton := automatonOfTablesTyped stmTables ntType termType actions
+instance automaton : Automaton := automatonOfTablesTyped stmTables ntType termType Unit actions
 
 /-- Safety — kernel `decide` (no compiler-trust axiom). -/
 theorem stmSafe : Main.safeValidator (A := automaton) () = true := by decide
@@ -111,9 +111,9 @@ theorem stmComplete : Main.completeValidator (A := automaton) () = true := by de
 
 /-! ### Lexer + end-to-end parsing -/
 
-/-- A token is the dependent pair `Σ t, termType t`: `NUM` carries its `Nat`,
-all other terminals carry `()`. -/
-abbrev Tok : Type := (t : Fin (stmTables.numTerm + 1)) × termType t
+/-- A token is `Info × Σ t, termType t` with `Info := Unit` here (this demo
+doesn't track positions): `NUM` carries its `Nat`, all other terminals carry `()`. -/
+abbrev Tok : Type := Unit × ((t : Fin (stmTables.numTerm + 1)) × termType t)
 
 /-- A tiny lexer: digits → `NUM`, and the punctuation tokens; whitespace skipped,
 anything else fails. -/
@@ -124,10 +124,10 @@ partial def lexAux : List Char → Option (List Tok)
     else if c.isDigit then
       let digs := (c :: rest).takeWhile Char.isDigit
       let n : Nat := digs.foldl (fun acc d => acc * 10 + (d.toNat - 48)) 0
-      (lexAux ((c :: rest).dropWhile Char.isDigit)).map ((⟨5, n⟩ : Tok) :: ·)
+      (lexAux ((c :: rest).dropWhile Char.isDigit)).map ((((), ⟨5, n⟩) : Tok) :: ·)
     else
       let single (i : Fin (stmTables.numTerm + 1)) (_h : termType i = Unit) :=
-        (lexAux rest).map ((⟨i, by rw [_h]; exact ()⟩ : Tok) :: ·)
+        (lexAux rest).map ((((), ⟨i, by rw [_h]; exact ()⟩) : Tok) :: ·)
       match c with
       | '+' => single 0 rfl
       | ';' => single 1 rfl
@@ -135,9 +135,9 @@ partial def lexAux : List Char → Option (List Tok)
       | ')' => single 3 rfl
       | _ => none
 
-/-- Lex a string into a token buffer ending in an infinite `EOF` filler `⟨4, ()⟩`. -/
+/-- Lex a string into a token buffer ending in an infinite `EOF` filler `((), ⟨4, ()⟩)`. -/
 def lexString (s : String) : Option (Buffer (A := automaton)) :=
-  (lexAux s.toList).map (fun toks => toks ++ₛ Stream'.const (⟨4, ()⟩ : Tok))
+  (lexAux s.toList).map (fun toks => toks ++ₛ Stream'.const ((((), ⟨4, ()⟩)) : Tok))
 
 /-- Parse a string into a `Stm` (the start nonterminal's value type). -/
 def parseStm (s : String) : Option Stm :=
@@ -190,7 +190,7 @@ theorem stm_parses (logNSteps : Nat) (word : List automaton.Token)
 theorem stm_unambiguous (word : List automaton.Token)
     (tree1 tree2 : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word) :
     ptSem tree1 = ptSem tree2 :=
-  Main.unambiguity (A := automaton) stmSafe stmComplete (⟨4, ()⟩ : Tok)
+  Main.unambiguity (A := automaton) stmSafe stmComplete ((((), ⟨4, ()⟩)) : Tok)
     (0 : Fin 1) word tree1 tree2
 
 end LeanMenhir.Examples.StmCalc

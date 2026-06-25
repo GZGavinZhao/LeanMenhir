@@ -220,6 +220,7 @@ See the section comment above. -/
 @[reducible]
 def automatonOfTablesTyped (g : GenTables)
     (ntType : Fin (g.numNonterm + 1) → Type) (termType : Fin (g.numTerm + 1) → Type)
+    (Info : Type)
     (actions : (p : Fin (g.numProd + 1)) →
       arrowsRight (symTypeOf g ntType termType (.NT (prodLhsOf g p)))
                   ((prodRhsRevOf g p).map (symTypeOf g ntType termType))) :
@@ -234,9 +235,11 @@ def automatonOfTablesTyped (g : GenTables)
   prod_lhs := prodLhsOf g
   prod_rhs_rev := prodRhsRevOf g
   prod_action := actions
-  Token := (t : Fin (g.numTerm + 1)) × termType t
-  token_term := Sigma.fst
-  token_sem := Sigma.snd
+  -- A token carries some caller-chosen `Info` (e.g. a source position; ignored by
+  -- the verified parser, used only for error reporting) plus the dependent payload.
+  Token := Info × ((t : Fin (g.numTerm + 1)) × termType t)
+  token_term := fun x => x.2.1
+  token_sem := fun x => x.2.2
   NonInitState := Fin (g.numNonInit + 1)
   noninitstateAlphabet := inferInstance
   InitState := Fin 1

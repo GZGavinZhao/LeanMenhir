@@ -76,6 +76,11 @@ Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
       `stm_parses`/`stm_unambiguous` corollaries and typed parse tests (`parseStm`
       returns a `Stm` directly). Tables come from `build_tables% grammar` (strategy
       C — generated at elaboration time, no hand-pasted literal).
+   - `Examples/CalcTemplate` — the **emission template** for the BNFC backend: a
+      calculator with precedence-by-coercion and parens, structured exactly as the
+      backend will emit (grammar → `build_tables%` → `ntType`/`termType`/`actions`
+      → automaton → token adapter → `parseString : String → Except String Exp`
+      with `line:col` errors, via `LeanMenhir.Runtime`). Kernel-`decide` certified.
 
 ## Heterogeneous (typed) semantic bridge (DONE)
 
@@ -136,6 +141,31 @@ stays untrusted: a buggy table is rejected by the validator, never accepted.
 
 This is the chosen table-generation strategy for the BNFC backend (vs (A)
 reimplement SLR in Haskell, or (B) a two-phase Lean codegen tool).
+
+## Parse driver runtime + BNFC emission template (DONE)
+
+`LeanMenhir/Runtime.lean` is a small **grammar-agnostic** driver over the verified
+`Main.parse`:
+- `fuelFor n` — a step-budget exponent generous enough for `n` tokens (too-small
+  fuel only yields a `Timeout`, never an unsound result).
+- `parseList init hsafe eof toks onFail onTimeout` — pads the finite token list
+  with `Stream'.const eof` and projects `ParseResult` into `Except E`.
+- `parseWith … adapt …` — additionally converts each external (lexer) token via
+  `adapt : Tok → Except E A.Token`.
+
+To let errors report source positions, `automatonOfTablesTyped` gained a per-token
+`Info` slot: `Token := Info × (Σ t, termType t)` (the verified parser ignores
+`Info`; actions are unchanged). The driver's `onFail` receives the failing
+lookahead token, so the caller pulls a `Position` out of `tok.1`.
+
+`Examples/CalcTemplate.lean` is the **emission template** — the exact shape the
+BNFC backend will emit for a precedence calculator: grammar → `build_tables%` →
+`ntType`/`termType`/`actions` (coercions are identity actions; `Exp`/`Exp1`/`Exp2`
+all map to the AST type `Exp`) → automaton (`Info := Position`) → a
+`TokenKind → terminal` adapter → `parseString : String → Except String Exp` with
+`line:col` errors. Kernel-`decide` certified; precedence/associativity/parens and
+error positions verified by `native_decide`/`#eval`. This pins the contract for
+the Haskell emitter.
 
 Key insights:
 - `past_state` annotations are **one level longer** than `past_symb` (state-stack
@@ -244,11 +274,14 @@ Results (`Examples/Arith.lean`, `Examples/MiniCalc.lean`):
 
 ## Remaining / future work
 - Cosmetic: `automatonOfTables` reducible-instance warning.
-- BNFC `--lean` backend integration to emit `Grammar0` from `.cf` files. With the
-  heterogeneous bridge (`automatonOfTablesTyped`) now landed, the backend can emit
-  typed actions building the BNFC AST directly (no `Val`-union / projection /
-  `Inhabited`). Open: multi-start support; position/error plumbing; the
-  `Reg → Lean` lexer compiler.
+- BNFC `--lean` backend integration to emit `Grammar0` from `.cf` files. The Lean
+  side is now ready: heterogeneous bridge (`automatonOfTablesTyped`), `build_tables%`
+  (strategy C), the `LeanMenhir.Runtime` driver, and `Examples/CalcTemplate` as the
+  exact emission shape. Remaining (Haskell side): the `Grammar0` + typed-action
+  emitter (rule zoo: coercions, lists, `define`), the `Reg → Lean` lexer compiler
+  (the large independent piece — unblocks user `token`s), multi-entrypoint support
+  (cheap: one automaton per entrypoint), and conflict diagnostics. Position/error
+  plumbing is **done** (per-token `Info` slot + driver `onFail`).
 - [x] M2 — `Interpreter.lean` (executable)
 - [x] M3 — Soundness (`Validator/Classes`, `Validator/Safe`, `Interpreter/Correct`, `Main.parse_correct`)
 - [x] M4 — Completeness + unambiguity
