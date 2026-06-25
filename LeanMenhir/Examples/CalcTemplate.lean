@@ -104,7 +104,13 @@ def termType : Fin (tables.numTerm + 1) → Type
   | _ => Unit
 
 /-- Typed semantic actions (arguments in reverse-RHS order). Coercions are
-identities; `EInt` consumes an `Int` and builds an `Exp`. -/
+identities; `EInt` consumes an `Int` and builds an `Exp`.
+
+The final `⟨_ + (numProd+1), h⟩` arm is an *exhaustiveness shim*: Lean's equation
+compiler only proves a `Fin n` numeric-literal match complete (ruling out
+`val ≥ n` via the `isLt` bound) for small `n`; past ~15 arms it reports the
+out-of-range index as a "missing case". `elimOutOfRange` discharges that
+impossible arm. BNFC's emitter appends this arm to every generated dispatcher. -/
 def actions : (p : Fin (tables.numProd + 1)) →
     arrowsRight (symTypeOf tables ntType termType (.NT (prodLhsOf tables p)))
                 ((prodRhsRevOf tables p).map (symTypeOf tables ntType termType))
@@ -117,6 +123,7 @@ def actions : (p : Fin (tables.numProd + 1)) →
   | 6 => fun (n : Int) => Exp.int n                               -- EInt
   | 7 => fun (_ : Unit) (e : Exp) (_ : Unit) => e                 -- "(" Exp ")"
   | 8 => ()                                                       -- dummy production
+  | ⟨_ + 9, h⟩ => elimOutOfRange h                                -- impossible (numProd+1 = 9)
 
 /-! ### 5. Automaton, certificates, and the parse driver -/
 

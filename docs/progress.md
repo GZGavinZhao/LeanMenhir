@@ -3,6 +3,50 @@
 Tracking the port of `coq-menhirlib` (`refs/menhir/coq-menhirlib/src/*.v`) to
 Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
 
+## 2026-06-25 — Scaling the typed dispatcher to BNFC-sized grammars
+
+Driven by the BNFC backend's `LEANMENHIR-SCALING-HANDOFF.md`: the generated typed
+`actions` dispatcher (one arm per production) did not scale to L0 (256 productions
+/ 480 states) — it OOM'd / took minutes. Two independent walls were found and
+fixed; the fix is internal (no break to the public bridge API).
+
+1. **Per-arm `O(numProd²)` reduction → `O(numProd · log numProd)`.** The dependent
+   return type of `actions` reduces `prodLhsOf tables i` / `prodRhsRevOf tables i`
+   once per arm. Backed by `Array.getD` these are `O(i)` in the kernel reducer
+   (it walks the backing `List`), and the retained intermediate state is what
+   blew up memory. Added two jump-table fields to `GenTables` —
+   `prodLhsFn : Nat → Nat` and `prodRhsRevFn : Nat → Array GSym` — that
+   `build_tables%` populates with **balanced binary-search-tree `Expr`s** over
+   numeric literals (comparisons via the kernel-accelerated `Nat.ble`/`Nat.beq`),
+   so each lookup reduces in `O(log numProd)`. `prodLhsOf`/`prodRhsRevOf` delegate
+   to them. The fields carry array-backed **defaults** (`fun i => prodLhs.getD i 0`),
+   so legacy/hand-written `GenTables` literals (`MiniCalc`, `emitTables` output,
+   the `partial` generators) keep working unchanged. `GenTables` lost its derived
+   `Repr`/`ToExpr` (functions have neither); `build_tables%` now builds the literal
+   field-by-field via `mkGenTablesExpr` (`toExpr` for data fields + synthesised
+   trees for the two function fields). Result: L0 `actions` elaborates in ~1.5 s
+   (was OOM); kernel `decide` certs on small grammars got faster too.
+   Invariant `prodLhsFn i = prodLhs.getD i 0` (∀ `i < numProd`) is regression-tested.
+
+2. **`Fin`-literal exhaustiveness wall (newly discovered).** With (1) making per-arm
+   typing cheap, elaboration now *reaches* a second wall: Lean's equation compiler
+   only proves a `Fin n` numeric-literal match exhaustive (using `isLt` to rule out
+   `val ≥ n`) for **small `n`** — past ~15 arms it reports the out-of-range index as
+   a "missing case" (verified: a bare `def f : Fin 21 → Nat | 0 => .. | 20 => ..`
+   already fails; `Fin 11` is fine). This is independent of the tables/our fix.
+   Solution: a trailing impossible arm `⟨_ + (numProd+1), h⟩ => elimOutOfRange h`,
+   where `Gen.elimOutOfRange {α} {m K} (h : m + K < K) : α := absurd h (by omega)`
+   turns the absurd bound into a value of any type, so the arm type-checks with no
+   exhaustiveness reasoning. **The BNFC emitter must append this one arm to every
+   generated dispatcher** (see `LEANMENHIR-SCALING-RESPONSE.md`).
+
+Files: `Generator/Tables.lean` (`GenTables` fields + `prodLhsOf`/`prodRhsRevOf` +
+`elimOutOfRange`), `Generator/BuildTables.lean` (`mkLookupTree`/`mkLookupLambda`/
+`mkGenTablesExpr`, dropped `deriving ToExpr GenTables`), `Examples/CalcTemplate.lean`
+& `Examples/StmCalc.lean` (now model the catch-all arm), new
+`Examples/ScaleTest.lean` (21-production regression guard, kernel-`decide`-certified,
+axioms `{propext, Quot.sound}`). Whole project builds (2987 jobs).
+
 ## Design decisions (recorded per handoff §9)
 
 - **Mathlib dependency: YES.** Already wired in `lakefile.toml` (`v4.31.0`, matches

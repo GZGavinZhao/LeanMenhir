@@ -98,6 +98,7 @@ def actions : (p : Fin (stmTables.numProd + 1)) →
   | 4 => fun (n : Nat) => Exp.num n                               -- Atom → NUM   (Nat ↦ Exp)
   | 5 => fun (_ : Unit) (e : Exp) (_ : Unit) => e                 -- Atom → "(" Exp ")"
   | 6 => ()                                                       -- dummy production
+  | ⟨_ + 7, h⟩ => elimOutOfRange h                                -- impossible (numProd+1 = 7)
 
 /-- The verified automaton built from the generated tables via the heterogeneous
 bridge. -/

@@ -48,6 +48,23 @@ structure GenTables where
   startNonterm : Nat
   prodLhs : Array Nat                 -- numProd
   prodRhsRev : Array (Array GSym)     -- numProd, reversed RHS
+  /-- Jump-table lookup for `prodLhs`, populated by `build_tables%` as a *balanced
+  decision tree* over numeric literals. The kernel reduces it in `O(log numProd)`
+  per query (via the accelerated `Nat.ble`/`Nat.beq`), versus `O(index)` for
+  `Array.getD` (which the kernel reduces by walking the backing `List`). This is
+  what lets the heterogeneous `actions` dispatcher — whose dependent return type
+  forces one production lookup *per arm* — elaborate in `O(numProd · log numProd)`
+  instead of `O(numProd²)` (and without retaining huge intermediate `List`/`Array`
+  states, which is the real memory blow-up on large grammars).
+
+  Defaults to the array lookup so hand-written / legacy `GenTables` literals (and
+  the `partial` generators `buildTables`/`buildTablesSLR`) keep working unchanged.
+  Invariant (enforced by `build_tables%`): `prodLhsFn i = prodLhs.getD i 0` for
+  every `i < numProd`. -/
+  prodLhsFn : Nat → Nat := fun i => prodLhs.getD i 0
+  /-- Jump-table lookup for `prodRhsRev`; see `prodLhsFn`.
+  Invariant: `prodRhsRevFn i = prodRhsRev.getD i #[]` for every `i < numProd`. -/
+  prodRhsRevFn : Nat → Array GSym := fun i => prodRhsRev.getD i #[]
   incoming : Array (Option GSym)      -- numStates; `none` only for state 0
   action : Array GAction              -- numStates
   /-- `goto[state][nonterm] = some targetState` or `none`. -/
@@ -59,7 +76,9 @@ structure GenTables where
   /-- `items[state]` = the LR(1) items of that state, each `(prod, dotPos, lookahead)`
   (one entry per lookahead). Needed only for the completeness validator. -/
   items : Array (Array (Nat × Nat × Nat)) -- numStates
-deriving Inhabited, Repr
+-- `Repr` is intentionally *not* derived: `GenTables` now carries function fields
+-- (`prodLhsFn`/`prodRhsRevFn`), and functions have no `Repr` instance.
+deriving Inhabited
 
 /-- Number of non-initial states. -/
 def GenTables.numNonInit (g : GenTables) : Nat := g.numStates - 1
@@ -201,16 +220,42 @@ def symTypeOf (g : GenTables)
 /-- The lhs nonterminal of a production (real productions use their stored lhs;
 the dummy padding production `numProd` maps to the dummy nonterminal `numNonterm`).
 Shared between the `prod_lhs` field and the dependent `actions` parameter type so
-the two are definitionally equal. -/
+the two are definitionally equal. Uses the jump-table `prodLhsFn` so the
+dependent `actions` dispatcher elaborates without the `O(index)` array walk. -/
 def prodLhsOf (g : GenTables) (p : Fin (g.numProd + 1)) : Fin (g.numNonterm + 1) :=
-  if p.val < g.numProd then cl g.numNonterm (g.prodLhs.getD p.val 0)
+  if p.val < g.numProd then cl g.numNonterm (g.prodLhsFn p.val)
   else cl g.numNonterm g.numNonterm
 
 /-- The reversed RHS of a production as grammar symbols. Shared between the
-`prod_rhs_rev` field and the dependent `actions` parameter type. -/
+`prod_rhs_rev` field and the dependent `actions` parameter type. Uses the
+jump-table `prodRhsRevFn`; the dummy production `numProd` yields `[]` (the
+`prodRhsRevFn` default returns `#[]` outside `[0, numProd)`). -/
 def prodRhsRevOf (g : GenTables) (p : Fin (g.numProd + 1)) :
     List (Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1))) :=
-  (g.prodRhsRev.getD p.val #[]).toList.map (gsymToSymbol g)
+  (g.prodRhsRevFn p.val).toList.map (gsymToSymbol g)
+
+/-- Discharge the impossible "out-of-range production index" arm of a dependent
+`actions` dispatcher.
+
+The dispatcher `actions : (p : Fin (numProd + 1)) → …` is written as a literal
+match `| 0 => … | numProd => …`. Lean's equation compiler only proves a
+`Fin n` numeric-literal match *exhaustive* (using the `isLt` bound to rule out
+`val ≥ n`) for *small* `n` — beyond ~15 arms it gives up and reports the
+out-of-range case `Fin.mk (numProd+1) _` as a "missing case". The fix is to add an
+explicit final arm matching every out-of-range index, whose `isLt` proof is then
+absurd:
+
+```
+def actions : (p : Fin (tables.numProd + 1)) → …
+  | 0 => …
+  | ⟨numProd⟩ => …                       -- the dummy production
+  | ⟨_ + (numProd + 1), h⟩ => elimOutOfRange h
+```
+
+`elimOutOfRange` turns the absurd `h : m + K < K` into a value of any type, so the
+arm type-checks without the equation compiler needing to reason about the bound. -/
+def elimOutOfRange {α : Sort u} {m K : Nat} (h : m + K < K) : α :=
+  absurd h (by omega)
 
 /-- Build an `Automaton` from the (untrusted) index-only tables `g` with
 *heterogeneous* semantic values: terminal `t` carries a `termType t`, nonterminal

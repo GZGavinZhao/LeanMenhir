@@ -20,3 +20,4 @@ import LeanMenhir.Examples.Arith
 import LeanMenhir.Examples.MiniCalc
 import LeanMenhir.Examples.StmCalc
 import LeanMenhir.Examples.CalcTemplate
+import LeanMenhir.Examples.ScaleTest
