@@ -47,6 +47,40 @@ Files: `Generator/Tables.lean` (`GenTables` fields + `prodLhsOf`/`prodRhsRevOf` 
 `Examples/ScaleTest.lean` (21-production regression guard, kernel-`decide`-certified,
 axioms `{propext, Quot.sound}`). Whole project builds (2987 jobs).
 
+### Follow-up investigation (negative results — do not re-attempt)
+
+BNFC reported L0 still builds slowly and asked about two further avenues. Both were
+investigated and ruled out:
+
+- **`ntType`/`termType` as the next wall (BNFC's hypothesis).** Falsified by
+  controlled measurement: replacing the `Fin n → Type` literal matches with balanced
+  jump-trees (a `type_lookup%` elaborator) cut the `actions` *type-checking* phase
+  1.88s → 0.55s, but `actions` elaboration **still** exceeds ~2M heartbeats either
+  way. The dominant cost is the **inherent per-arm reduction of the dependent
+  dispatcher motive** (~few-k heartbeats × 256 arms ≈ 2–4M), which no amount of
+  lookup-speedup removes. Conclusion: leave `ntType`/`termType` as plain matches;
+  the BNFC emitter should simply set `maxHeartbeats` to ~4M (down from 16M). Per-arm
+  cost is only a few seconds of *wall* time — it is not the build-time bottleneck.
+
+- **Jump-tabling the validator tables to enable kernel `decide` at L0 scale (handoff
+  §8-Q2).** Implemented (jump-table `action`/`goto`/`incoming`/`pastSymb`/
+  `pastStateSets`/`items`/`nullable`/`first`) and tested: kernel `decide` on L0's
+  `safeValidator` **blew up to 68 GB and did not finish**. The blow-up is *not* about
+  per-lookup cost (the jump-trees made lookups `O(log n)`) — it is intrinsic to what
+  `decide` does: the elaborator/kernel materialises and retains the *entire* reduction
+  term for the validator over 480 states. `native_decide` avoids this by compiling to
+  native code and keeping no proof term. **Kernel `decide` is therefore infeasible for
+  BNFC-sized automata regardless of table representation**, and `native_decide` is
+  required for L0-scale certificates. The jump-table change was reverted (it also
+  doubled the `GenTables` literal — arrays *and* trees — making `native_decide` worse).
+
+  The remaining ~15-min L0 build is `native_decide` compiling + running the two
+  validators over a 480-state automaton — a one-time build cost inherent to
+  certifying a grammar this size. The only LeanMenhir-side lever identified is making
+  the **completeness** certificate optional (it needs the large `items` field and a
+  second `native_decide`); a soundness-only build would skip both. Not implemented —
+  pending a decision on whether generated parsers need the unambiguity guarantee.
+
 ## Design decisions (recorded per handoff §9)
 
 - **Mathlib dependency: YES.** Already wired in `lakefile.toml` (`v4.31.0`, matches
