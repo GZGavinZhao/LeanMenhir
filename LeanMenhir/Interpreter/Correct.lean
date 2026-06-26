@@ -125,10 +125,10 @@ theorem step_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffer : 
     match step init hsafe stk buffer Hi with
     | .Accept sem bufferNew =>
         ∃ (wordNew : List A.Token) (pt : ParseTree (.NT (A.start_nt init)) wordNew),
-          word ++ₛ buffer = wordNew ++ₛ bufferNew ∧ ptSem pt = sem
+          (word ++ₛ buffer).get = (wordNew ++ₛ bufferNew).get ∧ ptSem pt = sem
     | .Progress stkNew bufferNew =>
         ∃ wordNew : List A.Token,
-          word ++ₛ buffer = wordNew ++ₛ bufferNew ∧ WordHasStackSemantics wordNew stkNew
+          (word ++ₛ buffer).get = (wordNew ++ₛ bufferNew).get ∧ WordHasStackSemantics wordNew stkNew
     | .Fail _ _ => True := by
   simp only [step]
   split
@@ -178,10 +178,8 @@ theorem step_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffer : 
         injection heqp with hst hbuf
         subst hst; subst hbuf
         refine ⟨word ++ [buffer.head], ?_, ?_⟩
-        · rw [Buf.append_append_stream]
-          congr 1
-          rw [Buf.cons_append_stream, Buf.nil_append_stream]
-          exact (Buf.eta buffer).symm
+        · rw [Buf.append_append_stream, Buf.cons_append_stream, Buf.nil_append_stream]
+          exact Buf.appendList_get_congr (Buf.get_eta buffer).symm word
         · have key := WordHasStackSemantics.cons hword sn (e ▸ ParseTree.Terminal_pt buffer.head)
           rw [ptSem_cast e (ParseTree.Terminal_pt buffer.head), ptSem] at key
           exact key
@@ -204,10 +202,10 @@ theorem parseFix_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffe
     match (parseFix init hsafe stk buffer logNSteps Hi).1 with
     | .Accept sem bufferNew =>
         ∃ (wordNew : List A.Token) (pt : ParseTree (.NT (A.start_nt init)) wordNew),
-          word ++ₛ buffer = wordNew ++ₛ bufferNew ∧ ptSem pt = sem
+          (word ++ₛ buffer).get = (wordNew ++ₛ bufferNew).get ∧ ptSem pt = sem
     | .Progress stkNew bufferNew =>
         ∃ wordNew : List A.Token,
-          word ++ₛ buffer = wordNew ++ₛ bufferNew ∧ WordHasStackSemantics wordNew stkNew
+          (word ++ₛ buffer).get = (wordNew ++ₛ bufferNew).get ∧ WordHasStackSemantics wordNew stkNew
     | .Fail _ _ => True := by
   induction logNSteps generalizing stk word buffer Hi with
   | zero => exact step_sound init hsafe stk word buffer Hi hword
@@ -237,7 +235,7 @@ theorem parse_correct (hsafe : safe) (buffer : Buffer) (logNSteps : Nat) :
     match parse init hsafe buffer logNSteps with
     | .Parsed sem bufferNew =>
         ∃ (word : List A.Token) (pt : ParseTree (.NT (A.start_nt init)) word),
-          buffer = word ++ₛ bufferNew ∧ ptSem pt = sem
+          buffer.get = (word ++ₛ bufferNew).get ∧ ptSem pt = sem
     | _ => True := by
   have hfix := parseFix_sound init hsafe [] [] buffer logNSteps (initStackInvariant init)
     WordHasStackSemantics.nil

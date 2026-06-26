@@ -35,7 +35,7 @@ theorem parse_correct (init : A.InitState) (hsafe : safeValidator () = true)
     match parse init hsafe logNSteps buffer with
     | .Parsed sem bufferNew =>
         ∃ (word : List A.Token) (pt : ParseTree (.NT (A.start_nt init)) word),
-          buffer = word ++ₛ bufferNew ∧ ptSem pt = sem
+          buffer.get = (word ++ₛ bufferNew).get ∧ ptSem pt = sem
     | _ => True :=
   LeanMenhir.parse_correct init (safe_is_validator hsafe) buffer logNSteps
 

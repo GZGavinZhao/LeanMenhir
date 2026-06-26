@@ -81,7 +81,7 @@ theorem arith_correct (logNSteps : Nat) (buffer : Buffer (A := automaton))
     (bufNew : Buffer (A := automaton))
     (h : Main.parse (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer = .Parsed sem bufNew) :
     ∃ (word : List automaton.Token) (pt : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word),
-      buffer = word ++ₛ bufNew ∧ ptSem pt = sem := by
+      buffer.get = (word ++ₛ bufNew).get ∧ ptSem pt = sem := by
   have H := Main.parse_correct (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer
   rw [h] at H; exact H
 

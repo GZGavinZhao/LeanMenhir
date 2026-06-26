@@ -71,6 +71,16 @@ The list is converted to an `Array` once; subsequent `head`/`tail` are O(1). -/
 @[inline] def ofListEof (xs : List α) (eof : α) : Buf α :=
   { push := [], toks := xs.toArray, idx := 0, eof := eof }
 
+/-- Denotation: the `n`-th token of the buffer's stream.
+
+Proof-only — the runtime parser uses `head`/`tail` directly and never calls
+`get`, so the fact that `get` walks `n` tails is irrelevant to performance. The
+soundness conservation law is phrased as equality of denotations (`a.get = b.get`),
+the honest analogue of the `Stream'` equality used by the original Coq proof. -/
+def get : Buf α → Nat → α
+  | b, 0 => b.head
+  | b, n + 1 => b.tail.get n
+
 /-! ### Equational laws
 
 These are the *only* laws the proofs (in `Interpreter/Complete.lean` and
@@ -93,18 +103,35 @@ theorem cons_append_stream (a : α) (l : List α) (b : Buf α) :
   | a :: l₁, l₂, b => by
     rw [List.cons_append, cons_append_stream, cons_append_stream, append_append_stream l₁]
 
-/-- Structure-η for buffers: a buffer equals the cons of its head and tail.
+@[simp] theorem get_zero (b : Buf α) : b.get 0 = b.head := rfl
 
-⚠️ TEMPORARY `sorry`. This does **not** hold structurally for the current
-array+push representation when the buffer is past EOF (`push = []` and
-`idx ≥ toks.size`): `cons eof (tail b)` re-pushes an `eof` that the original
-`b` represented only via its `eof` sentinel. The honest fixes are (a) a
-bisimulation-quotient `Buf`, (b) a `DecidableEq`-gated canonical `cons` that
-collapses a trailing-eof push, or (c) carrying a `buffer` non-emptiness
-invariant (fuel-bounded) through `step_sound`. Parked while we validate the
-runtime-performance hypothesis; see progress notes. -/
-@[simp] protected theorem eta (b : Buf α) : cons b.head b.tail = b := by
-  sorry
+theorem get_succ (b : Buf α) (n : Nat) : b.get (n + 1) = b.tail.get n := rfl
+
+/-- Denotational η: `cons b.head b.tail` denotes the same token stream as `b`.
+
+This replaces the structurally **false** `cons b.head b.tail = b`. Structural
+equality cannot hold for the array+cursor representation — `cons` records the
+prepended token in `push` rather than rewinding the cursor — but the soundness
+proof only ever needs the two buffers to *denote the same stream*. This is the
+exact Lean analogue of the Coq proof, where the buffer is a coinductive `Stream`
+and `destruct buffer as [tok buffer]` exposes `b = tok ::: tl b` definitionally;
+here that definitional step becomes this one-line lemma. -/
+protected theorem get_eta (b : Buf α) : (cons b.head b.tail).get = b.get := by
+  funext n; cases n <;> rfl
+
+/-- `cons` is a congruence for denotational equality. -/
+theorem cons_get_congr {a b : Buf α} (x : α) (h : a.get = b.get) :
+    (cons x a).get = (cons x b).get := by
+  funext n
+  cases n with
+  | zero => rfl
+  | succ n => exact congrFun h n
+
+/-- `appendList` is a congruence for denotational equality (its `Buf` argument). -/
+theorem appendList_get_congr {a b : Buf α} (h : a.get = b.get) :
+    ∀ l : List α, (appendList l a).get = (appendList l b).get
+  | [] => h
+  | x :: l => cons_get_congr x (appendList_get_congr h l)
 
 @[inherit_doc appendList] scoped infixl:65 " ++ₛ " => appendList
 

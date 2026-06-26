@@ -150,8 +150,18 @@ Optional future lever (either path): make the **completeness** certificate optio
   invariant lemmas).
 - **Soundness — DONE, no `sorry`:** `pop_spec_ptl`, `reduceStep_sound`,
   `step_sound`, `parseFix_sound`, and the user-facing `Main.parse_correct` are all
-  proved. `#print axioms Main.parse_correct` = `{propext, Classical.choice,
-  Quot.sound}` (no `sorryAx`).
+  proved. `#print axioms Main.parse_correct` = `{propext, Quot.sound}` (no
+  `sorryAx`). The conservation law is now stated denotationally —
+  `buffer.get = (word ++ₛ bufferNew).get`, equality of the denoted token streams
+  via the proof-only `Buf.get : Buf α → Nat → α` — rather than as structural `Buf`
+  equality (which is false for the array+cursor buffer, since `cons` records the
+  prepended token in `push` instead of rewinding the cursor). The shift step uses
+  `Buf.get_eta : (cons b.head b.tail).get = b.get` + `appendList`/`cons`
+  denotational congruence, the Lean analogue of the Coq proof's coinductive-`Stream`
+  `destruct` (which gets eta definitionally). `reduceStep_sound` keeps the stronger
+  structural `buffer = bufferNew` (reduce never advances the buffer); completeness
+  stays fully structural (it builds buffers via `cons`/`appendList` and never needs
+  eta).
 - **Native LR generator (untrusted, `partial def`) — WORKING:**
   `Generator/FinAlphabet` (Fin alphabets), `Generator/Tables`
   (`GenTables` + `automatonOfTables`: rebuilds the dependent `Automaton` from
