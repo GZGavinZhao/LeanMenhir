@@ -80,12 +80,19 @@ investigated and ruled out:
 
 Two things were finally measured directly (under a `systemd-run` memory cap), settling it:
 
-- **`native_decide` is workable for L0** — `safeValidator` certifies in **~4.6 min,
-  under 32 GB** (`exit 0`). The agent's ">15 min" was the *whole* `lake build` (both
-  certs ≈ 9 min + `actions` elaboration + codegen + Mathlib), which does finish. This
-  is already supported by the committed array-based tables (`b0390acd`) — **no further
+- **`native_decide` is workable for L0** — the **shipping array-based** path
+  (`b0390acd`) certifies `safeValidator` in **~3.2 min, under 32 GB** (`exit 0`); both
+  certs ≈ ~6.4 min. The agent's ">15 min" was the *whole* `lake build` (certs +
+  `actions` elaboration + codegen + Mathlib), which does finish. **No further
   LeanMenhir change is needed for the `native_decide` path.** Cost: the standard
   `Lean.ofReduceBool` compiler-trust axiom.
+
+- **`BTree` does *not* help `native_decide`** (measured: `BTree` + `native_decide`
+  L0 `safe` ≈ 4.6 min — ~1.4 min *slower* than array + `native_decide`). The O(n)
+  penalty `BTree` removes is a **kernel-reduction** artifact (kernel `Array.getD`
+  walks a backing `List`); in **compiled** code `Array.getD` is already O(1), whereas
+  `BTree.find` is O(log n), and the `BTree` literal (≈2× the nodes) compiles slower.
+  `BTree` pays off **only** on the kernel-`rfl` path.
 
 - **Kernel `decide` *can* be made to work**, via `BTree` *data* (a balanced search
   tree as a shared literal) + `BTree.find` + `by rfl` (kernel defeq, since the
@@ -93,7 +100,7 @@ Two things were finally measured directly (under a `systemd-run` memory cap), se
   `O(log n)` with no key-substitution, so there is no beta-copy blow-up. L0
   `safeValidator` then certifies by **kernel `rfl`** (`exit 0`) — axioms
   `{propext, Quot.sound}`, no compiler trust — but at **~12.7 min and 24–60 GB**,
-  i.e. ~3× slower and far heavier than `native_decide`.
+  i.e. ~4× slower and far heavier than the array + `native_decide` path.
 
 **Decision:** ship the `native_decide` path (faster, lighter, already committed). The
 `BTree` + `rfl` work is preserved as the experimental commit
