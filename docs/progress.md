@@ -63,23 +63,47 @@ investigated and ruled out:
   cost is only a few seconds of *wall* time — it is not the build-time bottleneck.
 
 - **Jump-tabling the validator tables to enable kernel `decide` at L0 scale (handoff
-  §8-Q2).** Implemented (jump-table `action`/`goto`/`incoming`/`pastSymb`/
-  `pastStateSets`/`items`/`nullable`/`first`) and tested: kernel `decide` on L0's
-  `safeValidator` **blew up to 68 GB and did not finish**. The blow-up is *not* about
-  per-lookup cost (the jump-trees made lookups `O(log n)`) — it is intrinsic to what
-  `decide` does: the elaborator/kernel materialises and retains the *entire* reduction
-  term for the validator over 480 states. `native_decide` avoids this by compiling to
-  native code and keeping no proof term. **Kernel `decide` is therefore infeasible for
-  BNFC-sized automata regardless of table representation**, and `native_decide` is
-  required for L0-scale certificates. The jump-table change was reverted (it also
-  doubled the `GenTables` literal — arrays *and* trees — making `native_decide` worse).
+  §8-Q2).** A first attempt encoded the tables as nested-`cond` *functions*
+  (`fun n => cond … cond …`); kernel `decide` on L0's `safeValidator` **blew up to
+  68 GB**. Root cause (later pinned down): applying such a function beta-substitutes
+  the key into the *entire* function body — an `O(tree size)` copy *per lookup* —
+  which, over the validators' tens of thousands of lookups, exhausts memory. The
+  `decide` *tactic* is also a dead end here for a *different* reason: it refuses to
+  reduce custom recursive lookups at all (reports "stuck").
 
-  The remaining ~15-min L0 build is `native_decide` compiling + running the two
-  validators over a 480-state automaton — a one-time build cost inherent to
-  certifying a grammar this size. The only LeanMenhir-side lever identified is making
-  the **completeness** certificate optional (it needs the large `items` field and a
-  second `native_decide`); a soundness-only build would skip both. Not implemented —
-  pending a decision on whether generated parsers need the unambiguity guarantee.
+  **This was NOT, however, the final word — see the resolution below.** The earlier
+  blanket claim that "kernel `decide` is infeasible regardless of representation" was
+  wrong; it is the *cond-lambda* encoding + the `decide` *tactic* that fail, not
+  kernel reduction per se.
+
+### Resolution (2026-06-26): `native_decide` for L0; kernel-`rfl` `BTree` path kept as an experiment
+
+Two things were finally measured directly (under a `systemd-run` memory cap), settling it:
+
+- **`native_decide` is workable for L0** — `safeValidator` certifies in **~4.6 min,
+  under 32 GB** (`exit 0`). The agent's ">15 min" was the *whole* `lake build` (both
+  certs ≈ 9 min + `actions` elaboration + codegen + Mathlib), which does finish. This
+  is already supported by the committed array-based tables (`b0390acd`) — **no further
+  LeanMenhir change is needed for the `native_decide` path.** Cost: the standard
+  `Lean.ofReduceBool` compiler-trust axiom.
+
+- **Kernel `decide` *can* be made to work**, via `BTree` *data* (a balanced search
+  tree as a shared literal) + `BTree.find` + `by rfl` (kernel defeq, since the
+  `decide` tactic won't reduce `BTree.find`). `find` descends shared subterms in
+  `O(log n)` with no key-substitution, so there is no beta-copy blow-up. L0
+  `safeValidator` then certifies by **kernel `rfl`** (`exit 0`) — axioms
+  `{propext, Quot.sound}`, no compiler trust — but at **~12.7 min and 24–60 GB**,
+  i.e. ~3× slower and far heavier than `native_decide`.
+
+**Decision:** ship the `native_decide` path (faster, lighter, already committed). The
+`BTree` + `rfl` work is preserved as the experimental commit
+`experiment(generator): BTree-data + kernel-rfl certificates` (jj change `vuvtlqru`)
+for reference / future use if a kernel-only trust story is ever required. It is the
+only kernel approach that *finishes* on L0; every other (array `O(n)` walks,
+cond-lambda beta-copy) crashed or never completed.
+
+Optional future lever (either path): make the **completeness** certificate optional
+(it needs the large `items` table + a second cert); a soundness-only build skips both.
 
 ## Design decisions (recorded per handoff §9)
 
