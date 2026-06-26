@@ -14,9 +14,11 @@ showing each parser step corresponds to one traversal step.
 -/
 import LeanMenhir.Interpreter
 import LeanMenhir.Validator.Complete
-import Mathlib.Data.Stream.Init
+
 
 namespace LeanMenhir
+
+open Buf
 
 variable [A : Automaton]
 
@@ -59,7 +61,7 @@ theorem first_word_set_app (t : A.Terminal)
     by_cases hs : nullableSymb s = true
     · simp only [firstWordSet, hs, if_true, List.mem_append, IH, List.reverse_cons,
         nullableWord, List.all_append, List.all_cons, List.all_nil, Bool.and_true]
-      tauto
+      grind
     · simp only [Bool.not_eq_true] at hs
       simp only [firstWordSet, hs, Bool.false_eq_true, if_false, List.reverse_cons,
         nullableWord, List.all_append, List.all_cons, List.all_nil, Bool.and_true,
@@ -226,7 +228,7 @@ end
 /-- The buffer at a dotted parse tree (Coq `ptd_buffer`). -/
 def ptdBuffer : PtDot init full_word → Buffer
   | .Reduce_ptd _ ptz => ptzBuffer init full_word buffer_end ptz
-  | .Shift_ptd tok _ ptlz => Stream'.cons tok (ptlzBuffer init full_word buffer_end ptlz)
+  | .Shift_ptd tok _ ptlz => Buf.cons tok (ptlzBuffer init full_word buffer_end ptlz)
 
 /-- The production at the root of a parse-tree-list zipper (Coq `ptlz_prod`). -/
 def ptlzProd : {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
@@ -321,7 +323,7 @@ theorem ptlz_future_first (hc : complete) :
       simp only [ptlzBuffer, ptlzFuture, ptlzLookahead]
       cases wordt with
       | nil =>
-          rw [Stream'.nil_append_stream]
+          rw [Buf.nil_append_stream]
           have hnull := nullable_correct hc rfl pt
           rcases IH with hl | ⟨he, hn⟩
           · left
@@ -332,7 +334,7 @@ theorem ptlz_future_first (hc : complete) :
             simp only [nullableWord, List.all_cons, hnull, Bool.true_and]
             exact hn
       | cons c wordt'' =>
-          rw [Stream'.cons_append_stream]
+          rw [Buf.cons_append_stream]
           left
           have hfirst := first_correct hc pt
           show A.token_term c ∈ firstWordSet (s :: ptlzFuture init full_word ptlz')
@@ -531,15 +533,15 @@ theorem ptd_buffer_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} →
   | _, _, .Terminal_pt tok, ptz => by
       cases ptz with
       | Cons_ptl_ptz ptl ptlz =>
-        simp only [buildPtDotFromPt, ptdBuffer, ptzBuffer, Stream'.cons_append_stream,
-          Stream'.nil_append_stream]
+        simp only [buildPtDotFromPt, ptdBuffer, ptzBuffer, Buf.cons_append_stream,
+          Buf.nil_append_stream]
   | _, _, .Non_terminal_pt prod ptl, ptz => by
       simp only [buildPtDotFromPt]
       cases h : nonNilProof ptl with
       | none =>
         have hw := nonNilProof_none ptl h
         subst hw
-        simp only [ptdBuffer, Stream'.nil_append_stream]
+        simp only [ptdBuffer, Buf.nil_append_stream]
       | some H =>
         rw [← ptd_buffer_build_from_pt_rec ptl H (.Non_terminal_pt_ptlz ptz)]
         simp only [ptlzBuffer]
@@ -559,7 +561,7 @@ theorem ptd_buffer_build_from_pt_rec : {symbs : List (Symbol A.Terminal A.Nonter
       | Cons_ptl a b =>
         simp only [buildPtDotFromPtRec]
         rw [← ptd_buffer_build_from_pt_rec (.Cons_ptl a b) Unit.unit (.Cons_ptl_ptlz pt ptlz)]
-        simp only [ptlzBuffer, Stream'.append_append_stream]
+        simp only [ptlzBuffer, Buf.append_append_stream]
 end
 
 /-- The buffer of the dotted parse tree built from a completed list
@@ -819,12 +821,12 @@ theorem next_ptd_iter_cost (ptd : PtDot init full_word) (logNSteps : Nat) :
   induction logNSteps generalizing ptd with
   | zero =>
     have h := next_ptd_cost init full_word ptd
-    simp only [nextPtdIter, pow_zero]
+    simp only [nextPtdIter, Nat.pow_zero]
     cases hn : nextPtd init full_word ptd with
     | none => rw [hn] at h; omega
     | some ptd' => rw [hn] at h; omega
   | succ n ih =>
-    have hp : (2 : Nat) ^ (n + 1) = 2 ^ n + 2 ^ n := by rw [pow_succ]; ring
+    have hp : (2 : Nat) ^ (n + 1) = 2 ^ n + 2 ^ n := by rw [Nat.pow_succ]; omega
     have IH1 := ih ptd
     cases h : nextPtdIter init full_word ptd n with
     | none => rw [h] at IH1; simp only [nextPtdIter, h]; omega
@@ -1033,7 +1035,7 @@ theorem step_shift_eq (hsafe : safe) (stk : Stack) (tok : A.Token) (rest : Buffe
     (stateNew : A.NonInitState)
     (e : Symbol.T (A.token_term tok) = A.last_symb_of_non_init_state stateNew)
     (hawt : awt (A.token_term tok) = .Shift_act stateNew e) :
-    step init hsafe stk (Stream'.cons tok rest) Hi =
+    step init hsafe stk (Buf.cons tok rest) Hi =
       .Progress (⟨stateNew, cast (congrArg A.symbol_semantic_type e)
         (A.token_sem tok)⟩ :: stk) rest := by
   unfold step
@@ -1042,7 +1044,7 @@ theorem step_shift_eq (hsafe : safe) (stk : Stack) (tok : A.Token) (rest : Buffe
     rw [haction] at haction'; exact absurd haction' (by simp)
   · rename_i awt' haction'
     rw [haction] at haction'; injection haction' with haw; subst haw
-    simp only [Stream'.head_cons, Stream'.tail_cons]
+    simp only [Buf.head_cons, Buf.tail_cons]
     split
     · rename_i sn e' hawt'
       rw [hawt] at hawt'; injection hawt' with hsn; subst hsn; rfl
@@ -1099,7 +1101,7 @@ theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word
   | Shift_ptd tok ptl ptlz =>
     simp only [nextPtd]
     have hbuf : ptdBuffer init full_word buffer_end (PtDot.Shift_ptd tok ptl ptlz) =
-        Stream'.cons tok (ptlzBuffer init full_word buffer_end ptlz) := rfl
+        Buf.cons tok (ptlzBuffer init full_word buffer_end ptlz) := rfl
     rw [hbuf]
     simp only [ptdStackCompat] at Hstk
     obtain ⟨stk0, Hfut, Hstk', Hstk0⟩ := Hstk
@@ -1179,7 +1181,8 @@ theorem parse_complete (hsafe : safe) (hc : complete)
       sem = ptSem full_pt ∧ buff = buffer_end ∧ ptSize full_pt ≤ 2 ^ logNSteps
     | .Timeout => 2 ^ logNSteps < ptSize full_pt
     | .Fail _ _ => False := by
-  set ptd0 := buildPtDotFromPt init full_word full_pt PtZipper.Top_ptz with hptd0
+  let ptd0 := buildPtDotFromPt init full_word full_pt PtZipper.Top_ptz
+  have hptd0 : ptd0 = buildPtDotFromPt init full_word full_pt PtZipper.Top_ptz := rfl
   have Hstk : ptdStackCompat init full_word buffer_end ptd0 [] := by
     rw [hptd0]
     exact ptd_stack_compat_build_from_pt init full_word buffer_end hc full_pt PtZipper.Top_ptz []

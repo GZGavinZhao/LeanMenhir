@@ -8,11 +8,11 @@ Soundness of the interpreter: if a parse succeeds and returns a semantic value,
 then the input word really has a parse tree with that semantic value.
 -/
 import LeanMenhir.Interpreter
-import Mathlib.Data.Stream.Init
+
 
 namespace LeanMenhir
 
-open Stream'
+open LeanMenhir.Buf
 
 variable [A : Automaton] (init : A.InitState)
 
@@ -178,10 +178,10 @@ theorem step_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffer : 
         injection heqp with hst hbuf
         subst hst; subst hbuf
         refine ⟨word ++ [buffer.head], ?_, ?_⟩
-        · rw [Stream'.append_append_stream]
+        · rw [Buf.append_append_stream]
           congr 1
-          rw [Stream'.cons_append_stream, Stream'.nil_append_stream]
-          exact (Stream'.eta buffer).symm
+          rw [Buf.cons_append_stream, Buf.nil_append_stream]
+          exact (Buf.eta buffer).symm
         · have key := WordHasStackSemantics.cons hword sn (e ▸ ParseTree.Terminal_pt buffer.head)
           rw [ptSem_cast e (ParseTree.Terminal_pt buffer.head), ptSem] at key
           exact key

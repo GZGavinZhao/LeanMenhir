@@ -7,11 +7,6 @@ defaultTargets = ["LeanMenhir"]
 pp.unicode.fun = true # pretty-prints `fun a ↦ b`
 
 [[require]]
-name = "mathlib"
-scope = "leanprover-community"
-rev = "v4.31.0"
-
-[[require]]
 name = "repl"
 scope = "leanprover-community"
 rev = "v4.31.0"

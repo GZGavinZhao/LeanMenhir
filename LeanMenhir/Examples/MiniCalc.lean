@@ -16,11 +16,10 @@ carries no compiler-trust axiom (`Lean.ofReduceBool`), only the kernel.
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Generator.LR1
-import Mathlib.Data.Stream.Init
 
 namespace LeanMenhir.Examples.MiniCalc
 
-open LeanMenhir LeanMenhir.Gen
+open LeanMenhir LeanMenhir.Gen LeanMenhir.Buf
 
 /-- The AST (`MiniCalc.v`, `Ast.expr`). Used as the monomorphic semantic value. -/
 inductive Expr where
@@ -127,7 +126,7 @@ partial def lexAux : List Char → Option (List (Fin 10 × Expr))
 
 /-- Lex a string into a token buffer ending in an infinite `EOF` filler. -/
 def lexString (s : String) : Option (Buffer (A := automaton)) :=
-  (lexAux s.toList).map (fun toks => toks ++ₛ Stream'.const ((6 : Fin 10), Expr.num 0))
+  (lexAux s.toList).map (fun toks => Buf.ofListEof toks ((6 : Fin 10), Expr.num 0))
 
 /-- Parse a string into an `Expr` (`MiniCalc.v`, `string2expr`). -/
 def parseExpr (s : String) : Option Expr :=

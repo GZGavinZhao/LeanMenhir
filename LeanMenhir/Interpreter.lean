@@ -13,7 +13,7 @@ Unlike the Coq version, equality proofs are carried directly (Lean erases `Prop`
 so casts are runtime no-ops and the proofs cannot block computation).
 -/
 import LeanMenhir.Validator.Safe
-import Mathlib.Data.Stream.Init
+import LeanMenhir.Buf
 
 namespace LeanMenhir
 
@@ -21,8 +21,8 @@ variable [A : Automaton]
 
 /-! ### Input buffers -/
 
-/-- The input is an infinite stream of tokens (Coq's coinductive `buffer`). -/
-abbrev Buffer : Type := Stream' A.Token
+/-- The input is a finite token buffer with O(1) `head`/`tail`. -/
+abbrev Buffer : Type := LeanMenhir.Buf A.Token
 
 /-! ### The automaton stack -/
 
@@ -252,8 +252,8 @@ theorem reduceStep_stack_invariant_preserved (hsafe : safe) (stk : Stack) (prod 
   split at heq
   · -- shift to a new state via goto
     rename_i sn e hgoto
-    set stk0 := (pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
-      (A.prod_action prod)).1 with hpop_eq
+    let stk0 := (pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (A.prod_action prod)).1
     injection heq with hstk _
     subst hstk
     have Hgoto1 := gotoHeadSymbs_of_safe hsafe (stateOfStack init stk0) (A.prod_lhs prod)

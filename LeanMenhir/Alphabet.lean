@@ -15,8 +15,6 @@ Notes on the port:
   Mathlib's `Fintype`, whose `Finset.toList` is noncomputable) so that the
   validators can be discharged by `decide` / `native_decide`.
 -/
-import Mathlib.Data.List.Basic
-import Mathlib.Tactic
 
 namespace LeanMenhir
 

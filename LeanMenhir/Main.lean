@@ -14,7 +14,7 @@ import LeanMenhir.Interpreter.Complete
 namespace LeanMenhir
 namespace Main
 
-open Stream'
+open LeanMenhir.Buf
 
 variable [A : Automaton]
 
@@ -66,13 +66,13 @@ theorem unambiguity (hsafe : safeValidator () = true) (hcomplete : completeValid
     (tok : A.Token) (init : A.InitState) (word : List A.Token)
     (tree1 tree2 : ParseTree (.NT (A.start_nt init)) word) :
     ptSem tree1 = ptSem tree2 := by
-  have H1 := parse_complete init hsafe hcomplete (ptSize tree1) word (Stream'.const tok) tree1
-  have H2 := parse_complete init hsafe hcomplete (ptSize tree1) word (Stream'.const tok) tree2
-  cases hp : parse init hsafe (ptSize tree1) (word ++ₛ Stream'.const tok) with
+  have H1 := parse_complete init hsafe hcomplete (ptSize tree1) word (Buf.const tok) tree1
+  have H2 := parse_complete init hsafe hcomplete (ptSize tree1) word (Buf.const tok) tree2
+  cases hp : parse init hsafe (ptSize tree1) (word ++ₛ Buf.const tok) with
   | Fail st t => rw [hp] at H1; exact H1.elim
   | Timeout =>
     rw [hp] at H1
-    exact absurd (Nat.lt_two_pow_self.trans H1) (Nat.lt_irrefl _)
+    exact absurd (Nat.lt_trans Nat.lt_two_pow_self H1) (Nat.lt_irrefl _)
   | Parsed sem buff =>
     rw [hp] at H1 H2
     exact H1.1.symm.trans H2.1

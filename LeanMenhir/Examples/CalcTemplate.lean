@@ -33,7 +33,6 @@ LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Runtime
 import LeanMenhir.Generator.BuildTables
-import Mathlib.Data.Stream.Init
 
 namespace LeanMenhir.Examples.CalcTemplate
 
@@ -185,6 +184,11 @@ def parseString (s : String) : Except String Exp := do
     (fun _ tok => s!"{(tok.1 : Position)}: syntax error") "input too large" toks
 
 /-! ### Acceptance tests (run the compiled parser) -/
+
+-- Core Lean does not ship a `DecidableEq` for `Except`; derive one locally so the
+-- `native_decide` acceptance tests below can compare `parseString …` to `.ok …`.
+-- (Mathlib used to provide this transitively; LeanMenhir is now Mathlib-free.)
+deriving instance DecidableEq for Except
 
 -- `*` binds tighter than `+`.
 example : parseString "1+2*3" = .ok (.add (.int 1) (.mul (.int 2) (.int 3))) := by native_decide

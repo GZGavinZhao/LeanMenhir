@@ -26,11 +26,10 @@ elaborator (strategy C) and certified here by the verified validators using
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Generator.BuildTables
-import Mathlib.Data.Stream.Init
 
 namespace LeanMenhir.Examples.StmCalc
 
-open LeanMenhir LeanMenhir.Gen
+open LeanMenhir LeanMenhir.Gen LeanMenhir.Buf
 
 /-! ### The two AST categories -/
 
@@ -138,7 +137,7 @@ partial def lexAux : List Char → Option (List Tok)
 
 /-- Lex a string into a token buffer ending in an infinite `EOF` filler `((), ⟨4, ()⟩)`. -/
 def lexString (s : String) : Option (Buffer (A := automaton)) :=
-  (lexAux s.toList).map (fun toks => toks ++ₛ Stream'.const ((((), ⟨4, ()⟩)) : Tok))
+  (lexAux s.toList).map (fun toks => Buf.ofListEof toks ((((), ⟨4, ()⟩)) : Tok))
 
 /-- Parse a string into a `Stm` (the start nonterminal's value type). -/
 def parseStm (s : String) : Option Stm :=

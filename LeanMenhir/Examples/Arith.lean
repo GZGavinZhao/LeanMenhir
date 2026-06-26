@@ -17,11 +17,10 @@ kernel-reducible) and the safety certificate is discharged by `native_decide`
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Generator.LR1
-import Mathlib.Data.Stream.Init
 
 namespace LeanMenhir.Examples.Arith
 
-open LeanMenhir LeanMenhir.Gen
+open LeanMenhir LeanMenhir.Gen LeanMenhir.Buf
 
 /-- Terminals: `num = 0`, `plus = 1`, `eof = 2`. Nonterminals: `S = 0`, `E = 1`. -/
 def grammar : Grammar0 where
@@ -60,7 +59,7 @@ theorem isComplete_ok : Main.completeValidator (A := automaton) () = true := by 
 
 /-- Parse a token stream (terminal index, value), ending in an infinite `eof`. -/
 def parseTokens (toks : List (Fin 4 × Nat)) : Option Nat :=
-  let buf : Buffer (A := automaton) := toks ++ₛ Stream'.const ((2 : Fin 4), 0)
+  let buf : Buffer (A := automaton) := Buf.ofListEof toks ((2 : Fin 4), 0)
   match Main.parse (A := automaton) (0 : Fin 1) isSafe_ok 30 buf with
   | .Parsed v _ => some v
   | _ => none

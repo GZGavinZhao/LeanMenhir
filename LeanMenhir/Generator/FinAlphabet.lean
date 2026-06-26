@@ -6,7 +6,6 @@ automata. Part of the (untrusted) generator support.
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Alphabet
-import Mathlib.Data.List.FinRange
 
 namespace LeanMenhir
 
@@ -18,23 +17,15 @@ instance instComparableFin {n : Nat} : Comparable (Fin n) where
   compare := Fin.cmp
   compare_antisym a b := by
     show (Fin.cmp a b).swap = Fin.cmp b a
-    unfold Fin.cmp
-    split_ifs <;> first | rfl | (exfalso; omega)
+    unfold Fin.cmp; grind [Ordering.swap]
   compare_trans a b c o hab hbc := by
-    simp only [Fin.cmp] at hab hbc ⊢
-    split_ifs at hab hbc ⊢ <;>
-      first
-      | rfl
-      | (exfalso; omega)
-      | (rw [← hab] at hbc; exact absurd hbc (by decide))
-      | simp_all
+    simp only [Fin.cmp] at hab hbc ⊢; grind
 
 instance instComparableLeibnizEqFin {n : Nat} : ComparableLeibnizEq (Fin n) where
   compare_eq a b h := by
     apply Fin.ext
     simp only [show Comparable.compare a b = Fin.cmp a b from rfl, Fin.cmp] at h
-    split_ifs at h
-    simp_all
+    grind
 
 instance instEnumerableFin {n : Nat} : Enumerable (Fin n) where
   allList := List.finRange n

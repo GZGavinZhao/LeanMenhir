@@ -16,11 +16,10 @@ position out of its `Info` component (`.1`) for error messages.
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Main
-import Mathlib.Data.Stream.Init
 
 namespace LeanMenhir.Runtime
 
-open LeanMenhir Stream'
+open LeanMenhir
 
 variable {A : Automaton}
 
@@ -44,7 +43,7 @@ def parseList {E : Type}
     (eof : A.Token) (toks : List A.Token)
     (onFail : A.State → A.Token → E) (onTimeout : E) :
     Except E (ResultType A init) :=
-  match Main.parse init hsafe (fuelFor toks.length) (toks ++ₛ Stream'.const eof) with
+  match Main.parse init hsafe (fuelFor toks.length) (Buf.ofListEof toks eof) with
   | .Parsed v _ => .ok v
   | .Fail st tok => .error (onFail st tok)
   | .Timeout => .error onTimeout
