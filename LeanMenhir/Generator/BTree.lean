@@ -44,4 +44,11 @@ def BTree.find {α : Type u} (dflt : α) (q : Nat) : BTree α → α
   | .leaf => dflt
   | .node k v lo hi => if q < k then lo.find dflt q else if q == k then v else hi.find dflt q
 
+/-- In-order list of `(key, value)` entries. Used by the validators to iterate the
+*defined* table entries (a sparse `O(entries)` traversal) instead of probing every
+possible key (a dense `O(domain)` scan of `BTree.find`s). -/
+def BTree.toList {α : Type u} : BTree α → List (Nat × α)
+  | .leaf => []
+  | .node k v lo hi => lo.toList ++ (k, v) :: hi.toList
+
 end LeanMenhir.Gen

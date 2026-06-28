@@ -111,6 +111,19 @@ partial def mkBTreeLit (α : Expr) (vals : Array Expr) (lo hi : Nat) : Expr :=
 
 private def mkBT (α : Expr) (vals : Array Expr) : Expr := mkBTreeLit α vals 0 vals.size
 
+/-- Balanced `BTree` literal `Expr` over an explicit *sorted* `(key, valueExpr)`
+list — used for the **sparse** `gotoBT` (only the defined gotos get an entry, so
+`BTree.find none` returns `none` for every undefined `(state, nonterm)` key, and
+`BTree.toList` enumerates just the defined gotos in `O(defined)`). `pairs` must be
+sorted by key ascending. -/
+partial def mkBTreeOfPairs (α : Expr) (pairs : Array (Nat × Expr)) (lo hi : Nat) : Expr :=
+  if lo ≥ hi then mkApp (mkConst ``BTree.leaf [.zero]) α
+  else
+    let mid := (lo + hi) / 2
+    let (k, v) := pairs[mid]!
+    mkAppN (mkConst ``BTree.node [.zero])
+      #[α, mkNatLit k, v, mkBTreeOfPairs α pairs lo mid, mkBTreeOfPairs α pairs (mid + 1) hi]
+
 /-- Build a concrete `GenTables` literal `Expr` field by field: `toExpr` for each
 data field, the synthesised balanced trees for `prodLhsFn`/`prodRhsRevFn`, and
 balanced `BTree` literals for the validator tables. The argument order MUST match
@@ -126,13 +139,18 @@ bridge for hand-literals, and reify-bug sanity checks, still read them). A
 `build_tables%` result is therefore consumed only via the BTree-backed bridges,
 not the monomorphic `automatonOfTables` array bridge. -/
 def mkGenTablesExpr (t : GenTables) : Expr :=
-  -- Flatten the 2-D `goto`, width `numNonterm + 1` (see `GenTables.gotoBT`).
+  -- Sparse, flattened `goto` keyed by `state * (numNonterm + 1) + nonterm`
+  -- (see `GenTables.gotoBT`): only the *defined* gotos get an entry, so the tree
+  -- has `O(defined gotos)` nodes instead of `O(numStates · numNonterm)`. Keys are
+  -- produced in ascending order, as `mkBTreeOfPairs` requires.
   let w := t.numNonterm + 1
-  let gotoVals : Array Expr := Id.run do
-    let mut acc : Array Expr := Array.mkEmpty (t.numStates * w)
+  let gotoPairs : Array (Nat × Expr) := Id.run do
+    let mut acc : Array (Nat × Expr) := #[]
     for s in [0:t.numStates] do
       for nt in [0:w] do
-        acc := acc.push (toExpr ((t.goto.getD s #[]).getD nt none))
+        match (t.goto.getD s #[]).getD nt none with
+        | none => pure ()
+        | some v => acc := acc.push (s * w + nt, toExpr (some v : Option Nat))
     return acc
   mkAppN (mkConst ``GenTables.mk) #[
     -- scalar + array data + cond-lambda jump tables (declaration order)
@@ -149,7 +167,7 @@ def mkGenTablesExpr (t : GenTables) : Expr :=
     -- pastSymbBT, pastStateSetsBT, nullableBT, firstBT, itemsBT)
     mkBT (optTyOf gsymTy) (t.incoming.map toExpr),
     mkBT (mkConst ``GAction) (t.action.map toExpr),
-    mkBT (optTyOf (mkConst ``Nat)) gotoVals,
+    mkBTreeOfPairs (optTyOf (mkConst ``Nat)) gotoPairs 0 gotoPairs.size,
     mkBT (arrTyOf gsymTy) (t.pastSymb.map toExpr),
     mkBT (arrTyOf (arrTyOf (mkConst ``Nat))) (t.pastStateSets.map toExpr),
     mkBT (mkConst ``Bool) (t.nullable.map toExpr),
