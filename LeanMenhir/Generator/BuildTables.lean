@@ -84,17 +84,64 @@ def mkProdRhsRevFnExpr (t : GenTables) : Expr :=
   let arrTy := mkApp (mkConst ``Array [.zero]) (mkConst ``GSym)
   mkLookupLambda arrTy (.succ .zero) (toExpr (#[] : Array GSym)) (t.prodRhsRev.map toExpr)
 
+/-! ### Balanced `BTree` *data* literals (for kernel-`rfl` validator certificates)
+
+Unlike the `…Fn` cond-lambda jump tables above (which the `decide` *tactic* reduces
+but which beta-copy the whole tree per call — fine for the few-hundred-arm `actions`
+dispatcher, fatal for the validators' tens-of-thousands of lookups), the validator
+tables are emitted as `BTree` *data*. `BTree.find` descends the shared literal in
+`O(log n)` with no large substitution, so a kernel-`rfl` certificate over a
+480-state automaton reduces in bounded memory. See `Generator/BTree.lean`. -/
+
+private def gsymTy : Expr := mkConst ``GSym
+private def arrTyOf (a : Expr) : Expr := mkApp (mkConst ``Array [.zero]) a
+private def optTyOf (a : Expr) : Expr := mkApp (mkConst ``Option [.zero]) a
+private def natNatNatTy : Expr :=
+  mkApp2 (mkConst ``Prod [.zero, .zero]) (mkConst ``Nat)
+    (mkApp2 (mkConst ``Prod [.zero, .zero]) (mkConst ``Nat) (mkConst ``Nat))
+
+/-- Balanced `BTree` literal `Expr` over `vals` keyed by index `0 … vals.size-1`
+(`BTree.find dflt i = vals[i]` for in-range `i`). `α` is the element type. -/
+partial def mkBTreeLit (α : Expr) (vals : Array Expr) (lo hi : Nat) : Expr :=
+  if lo ≥ hi then mkApp (mkConst ``BTree.leaf [.zero]) α
+  else
+    let mid := (lo + hi) / 2
+    mkAppN (mkConst ``BTree.node [.zero])
+      #[α, mkNatLit mid, vals[mid]!, mkBTreeLit α vals lo mid, mkBTreeLit α vals (mid + 1) hi]
+
+private def mkBT (α : Expr) (vals : Array Expr) : Expr := mkBTreeLit α vals 0 vals.size
+
 /-- Build a concrete `GenTables` literal `Expr` field by field: `toExpr` for each
-data field, the synthesised balanced trees for `prodLhsFn`/`prodRhsRevFn`. The
-argument order MUST match the `GenTables` field declaration order. -/
+data field, the synthesised balanced trees for `prodLhsFn`/`prodRhsRevFn`, and
+balanced `BTree` literals for the validator tables. The argument order MUST match
+the `GenTables` field declaration order. -/
 def mkGenTablesExpr (t : GenTables) : Expr :=
+  -- Flatten the 2-D `goto`, width `numNonterm + 1` (see `GenTables.gotoBT`).
+  let w := t.numNonterm + 1
+  let gotoVals : Array Expr := Id.run do
+    let mut acc : Array Expr := Array.mkEmpty (t.numStates * w)
+    for s in [0:t.numStates] do
+      for nt in [0:w] do
+        acc := acc.push (toExpr ((t.goto.getD s #[]).getD nt none))
+    return acc
   mkAppN (mkConst ``GenTables.mk) #[
+    -- scalar + array data + cond-lambda jump tables (declaration order)
     toExpr t.numTerm, toExpr t.numNonterm, toExpr t.numProd, toExpr t.numStates,
     toExpr t.startNonterm, toExpr t.prodLhs, toExpr t.prodRhsRev,
     mkProdLhsFnExpr t, mkProdRhsRevFnExpr t,
     toExpr t.incoming, toExpr t.action, toExpr t.goto,
     toExpr t.pastSymb, toExpr t.pastStateSets, toExpr t.nullable,
-    toExpr t.first, toExpr t.items ]
+    toExpr t.first, toExpr t.items,
+    -- BTree data for the verified accessors (incomingBT, actionBT, gotoBT,
+    -- pastSymbBT, pastStateSetsBT, nullableBT, firstBT, itemsBT)
+    mkBT (optTyOf gsymTy) (t.incoming.map toExpr),
+    mkBT (mkConst ``GAction) (t.action.map toExpr),
+    mkBT (optTyOf (mkConst ``Nat)) gotoVals,
+    mkBT (arrTyOf gsymTy) (t.pastSymb.map toExpr),
+    mkBT (arrTyOf (arrTyOf (mkConst ``Nat))) (t.pastStateSets.map toExpr),
+    mkBT (mkConst ``Bool) (t.nullable.map toExpr),
+    mkBT (arrTyOf (mkConst ``Nat)) (t.first.map toExpr),
+    mkBT (arrTyOf natNatNatTy) (t.items.map toExpr) ]
 
 
 /-! ### The elaborator -/

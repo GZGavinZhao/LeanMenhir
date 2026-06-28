@@ -106,12 +106,12 @@ def actions : (p : Fin (tables.numProd + 1)) →
 /-- The verified automaton built from the generated tables. -/
 instance automaton : Automaton := automatonOfTablesTyped tables ntType termType Unit actions
 
-/-- Safety — kernel `decide` (also exercises the jump-table lookups in the
+/-- Safety — kernel `rfl` (BTree-backed tables: `O(log)` lookups in the
 validator, with no compiler-trust axiom). -/
-theorem scaleSafe : Main.safeValidator (A := automaton) () = true := by decide
+theorem scaleSafe : Main.safeValidator (A := automaton) () = true := by rfl
 
-/-- Completeness — kernel `decide`. -/
-theorem scaleComplete : Main.completeValidator (A := automaton) () = true := by decide
+/-- Completeness — kernel `rfl` (BTree-backed tables). -/
+theorem scaleComplete : Main.completeValidator (A := automaton) () = true := by rfl
 
 /-- The jump-table fields agree with the array fields they replace (catches reify
 bugs in `build_tables%`). -/

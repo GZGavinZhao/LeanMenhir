@@ -14,6 +14,7 @@ LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Main
 import LeanMenhir.Generator.FinAlphabet
+import LeanMenhir.Generator.BTree
 
 namespace LeanMenhir
 namespace Gen
@@ -76,6 +77,22 @@ structure GenTables where
   /-- `items[state]` = the LR(1) items of that state, each `(prod, dotPos, lookahead)`
   (one entry per lookahead). Needed only for the completeness validator. -/
   items : Array (Array (Nat × Nat × Nat)) -- numStates
+  -- ### Balanced-search-tree views of the state/nonterminal-indexed tables.
+  -- `build_tables%` populates these; the kernel-`rfl` bridge's verified accessors
+  -- read them via `BTree.find` so a lookup reduces in `O(log n)` with bounded
+  -- memory (see `Generator/BTree.lean`). They default to the empty tree, so the
+  -- array-backed `automatonOfTables`/`automatonOfTablesTyped` bridges and any
+  -- hand-written literals keep working unchanged; every `build_tables%` result
+  -- supplies real trees.
+  incomingBT : BTree (Option GSym) := .leaf            -- keyed by state
+  actionBT : BTree GAction := .leaf                    -- keyed by state
+  /-- Flattened `goto`, keyed by `state * (numNonterm + 1) + nonterm`. -/
+  gotoBT : BTree (Option Nat) := .leaf
+  pastSymbBT : BTree (Array GSym) := .leaf             -- keyed by state
+  pastStateSetsBT : BTree (Array (Array Nat)) := .leaf -- keyed by state
+  nullableBT : BTree Bool := .leaf                     -- keyed by nonterminal
+  firstBT : BTree (Array Nat) := .leaf                 -- keyed by nonterminal
+  itemsBT : BTree (Array (Nat × Nat × Nat)) := .leaf   -- keyed by state
 -- `Repr` is intentionally *not* derived: `GenTables` now carries function fields
 -- (`prodLhsFn`/`prodRhsRevFn`), and functions have no `Repr` instance.
 deriving Inhabited
@@ -122,6 +139,36 @@ def gActionToAction (a : GAction) : Action (lastSymbOf g) (Fin (g.numProd + 1)) 
   match a with
   | .defaultReduce p => .Default_reduce_act (cl g.numProd p)
   | .lookahead arr => .Lookahead_act (fun term => gLookToLook g term (arr.getD term.val .fail))
+
+/-! ### BTree-backed accessors (kernel-`rfl` certificate path).
+
+Identical in *value* to `lastSymbOf`/`gLookToLook`/`gActionToAction`, but the
+`incoming` lookup goes through the `incomingBT` jump tree, so the bridges built
+on them (`automatonOfTablesBT`) reduce a per-state/per-terminal lookup in
+`O(log n)` under the kernel — enabling a kernel-`rfl` certificate on large
+automata. The array-backed originals are untouched (so `decide`/`native_decide`
+on the array bridges is unaffected). -/
+
+/-- `lastSymbOf` via the `incomingBT` jump tree. -/
+def lastSymbOfBT (n : Fin (g.numNonInit + 1)) : Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1)) :=
+  gsymToSymbol g ((BTree.find none (n.val + 1) g.incomingBT).getD (.term 0))
+
+/-- `gLookToLook` against `lastSymbOfBT`. -/
+def gLookToLookBT (term : Fin (g.numTerm + 1)) (l : GLookahead) :
+    LookaheadAction (lastSymbOfBT g) (Fin (g.numProd + 1)) term :=
+  match l with
+  | .shift t =>
+      let target : Fin (g.numNonInit + 1) := cl g.numNonInit (t - 1)
+      if h : (Symbol.T term : Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1)))
+          = lastSymbOfBT g target then .Shift_act target h else .Fail_act
+  | .reduce p => .Reduce_act (cl g.numProd p)
+  | .fail => .Fail_act
+
+/-- `gActionToAction` against `lastSymbOfBT`. -/
+def gActionToActionBT (a : GAction) : Action (lastSymbOfBT g) (Fin (g.numProd + 1)) :=
+  match a with
+  | .defaultReduce p => .Default_reduce_act (cl g.numProd p)
+  | .lookahead arr => .Lookahead_act (fun term => gLookToLookBT g term (arr.getD term.val .fail))
 
 variable (Val : Type) (actions : Nat → List Val → Val)
 
@@ -184,6 +231,63 @@ def automatonOfTables : Automaton where
   -- the generated table. (The dummy nonterminal never occurs in a real RHS.)
   nullable_nterm := fun nt => if nt.val < g.numNonterm then g.nullable.getD nt.val false else true
   first_nterm := fun nt => (g.first.getD nt.val #[]).toList.map (cl g.numTerm)
+
+/-- BTree-backed monomorphic bridge: identical to `automatonOfTables` but every
+state/nonterminal-indexed lookup goes through `BTree.find` on the `…BT` fields, so
+the `isSafe`/`isComplete` validators reduce in `O(log n)` per lookup under the
+kernel — discharge their certificates with `by rfl` (not `decide`, which refuses
+`BTree.find`'s recursion). Requires `g` from `build_tables%` (which populates the
+trees). Used as the kernel-`rfl` measurement / certificate path. -/
+@[reducible]
+def automatonOfTablesBT : Automaton where
+  Terminal := Fin (g.numTerm + 1)
+  Nonterminal := Fin (g.numNonterm + 1)
+  terminalAlphabet := inferInstance
+  nonterminalAlphabet := inferInstance
+  symbol_semantic_type := fun _ => Val
+  Production := Fin (g.numProd + 1)
+  productionAlphabet := inferInstance
+  prod_lhs := fun p =>
+    if p.val < g.numProd then cl g.numNonterm (g.prodLhsFn p.val)
+    else cl g.numNonterm g.numNonterm
+  prod_rhs_rev := fun p => (g.prodRhsRevFn p.val).toList.map (gsymToSymbol g)
+  prod_action := fun p =>
+    collectArrows (actions p.val) ((g.prodRhsRevFn p.val).toList.map (gsymToSymbol g)) []
+  Token := Fin (g.numTerm + 1) × Val
+  token_term := fun t => t.1
+  token_sem := fun t => t.2
+  NonInitState := Fin (g.numNonInit + 1)
+  noninitstateAlphabet := inferInstance
+  InitState := Fin 1
+  initstateAlphabet := inferInstance
+  last_symb_of_non_init_state := lastSymbOfBT g
+  start_nt := fun _ => cl g.numNonterm g.startNonterm
+  action_table := fun s =>
+    let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
+    gActionToActionBT g (BTree.find (.lookahead #[]) flat g.actionBT)
+  goto_table := fun s nt =>
+    let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
+    match BTree.find none (flat * (g.numNonterm + 1) + nt.val) g.gotoBT with
+    | none => none
+    | some t =>
+        let target : Fin (g.numNonInit + 1) := cl g.numNonInit (t - 1)
+        if h : (Symbol.NT nt : Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1)))
+            = lastSymbOfBT g target then some ⟨target, h⟩ else none
+  past_symb_of_non_init_state := fun n =>
+    (BTree.find #[] (n.val + 1) g.pastSymbBT).toList.map (gsymToSymbol g)
+  past_state_of_non_init_state := fun n =>
+    (BTree.find #[] (n.val + 1) g.pastStateSetsBT).toList.map (fun (stateSet : Array Nat) =>
+      fun (s : State (Fin 1) (Fin (g.numNonInit + 1))) =>
+        let flat := match s with | .Init _ => 0 | .Ninit m => m.val + 1
+        stateSet.toList.contains flat)
+  items_of_state := fun s =>
+    let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
+    (BTree.find #[] flat g.itemsBT).toList.map (fun it =>
+      { prod_item := cl g.numProd it.1
+        dot_pos_item := it.2.1
+        lookaheads_item := [cl g.numTerm it.2.2] })
+  nullable_nterm := fun nt => if nt.val < g.numNonterm then BTree.find false nt.val g.nullableBT else true
+  first_nterm := fun nt => (BTree.find #[] nt.val g.firstBT).toList.map (cl g.numTerm)
 
 /-! ### Heterogeneous (typed) bridge
 
@@ -289,34 +393,34 @@ def automatonOfTablesTyped (g : GenTables)
   noninitstateAlphabet := inferInstance
   InitState := Fin 1
   initstateAlphabet := inferInstance
-  last_symb_of_non_init_state := lastSymbOf g
+  last_symb_of_non_init_state := lastSymbOfBT g
   start_nt := fun _ => cl g.numNonterm g.startNonterm
   action_table := fun s =>
     let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
-    gActionToAction g (g.action.getD flat (.lookahead #[]))
+    gActionToActionBT g (BTree.find (.lookahead #[]) flat g.actionBT)
   goto_table := fun s nt =>
     let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
-    match (g.goto.getD flat #[]).getD nt.val none with
+    match BTree.find none (flat * (g.numNonterm + 1) + nt.val) g.gotoBT with
     | none => none
     | some t =>
         let target : Fin (g.numNonInit + 1) := cl g.numNonInit (t - 1)
         if h : (Symbol.NT nt : Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1)))
-            = lastSymbOf g target then some ⟨target, h⟩ else none
+            = lastSymbOfBT g target then some ⟨target, h⟩ else none
   past_symb_of_non_init_state := fun n =>
-    (g.pastSymb.getD (n.val + 1) #[]).toList.map (gsymToSymbol g)
+    (BTree.find #[] (n.val + 1) g.pastSymbBT).toList.map (gsymToSymbol g)
   past_state_of_non_init_state := fun n =>
-    (g.pastStateSets.getD (n.val + 1) #[]).toList.map (fun (stateSet : Array Nat) =>
+    (BTree.find #[] (n.val + 1) g.pastStateSetsBT).toList.map (fun (stateSet : Array Nat) =>
       fun (s : State (Fin 1) (Fin (g.numNonInit + 1))) =>
         let flat := match s with | .Init _ => 0 | .Ninit m => m.val + 1
         stateSet.toList.contains flat)
   items_of_state := fun s =>
     let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
-    (g.items.getD flat #[]).toList.map (fun it =>
+    (BTree.find #[] flat g.itemsBT).toList.map (fun it =>
       { prod_item := cl g.numProd it.1
         dot_pos_item := it.2.1
         lookaheads_item := [cl g.numTerm it.2.2] })
-  nullable_nterm := fun nt => if nt.val < g.numNonterm then g.nullable.getD nt.val false else true
-  first_nterm := fun nt => (g.first.getD nt.val #[]).toList.map (cl g.numTerm)
+  nullable_nterm := fun nt => if nt.val < g.numNonterm then BTree.find false nt.val g.nullableBT else true
+  first_nterm := fun nt => (BTree.find #[] nt.val g.firstBT).toList.map (cl g.numTerm)
 
 end Gen
 end LeanMenhir
