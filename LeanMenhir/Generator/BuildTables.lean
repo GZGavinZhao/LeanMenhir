@@ -114,7 +114,17 @@ private def mkBT (α : Expr) (vals : Array Expr) : Expr := mkBTreeLit α vals 0 
 /-- Build a concrete `GenTables` literal `Expr` field by field: `toExpr` for each
 data field, the synthesised balanced trees for `prodLhsFn`/`prodRhsRevFn`, and
 balanced `BTree` literals for the validator tables. The argument order MUST match
-the `GenTables` field declaration order. -/
+the `GenTables` field declaration order.
+
+The eight state/nonterminal-indexed *array* validator tables (`incoming`,
+`action`, `goto`, `pastSymb`, `pastStateSets`, `nullable`, `first`, `items`) are
+emitted **empty**: the only bridges that read `build_tables%` output
+(`automatonOfTablesTyped`, `automatonOfTablesBT`) go through the corresponding
+`…BT` trees, so the arrays are dead weight here and emitting them roughly doubles
+literal-elaboration time. `prodLhs`/`prodRhsRev` are kept (the monomorphic array
+bridge for hand-literals, and reify-bug sanity checks, still read them). A
+`build_tables%` result is therefore consumed only via the BTree-backed bridges,
+not the monomorphic `automatonOfTables` array bridge. -/
 def mkGenTablesExpr (t : GenTables) : Expr :=
   -- Flatten the 2-D `goto`, width `numNonterm + 1` (see `GenTables.gotoBT`).
   let w := t.numNonterm + 1
@@ -129,9 +139,12 @@ def mkGenTablesExpr (t : GenTables) : Expr :=
     toExpr t.numTerm, toExpr t.numNonterm, toExpr t.numProd, toExpr t.numStates,
     toExpr t.startNonterm, toExpr t.prodLhs, toExpr t.prodRhsRev,
     mkProdLhsFnExpr t, mkProdRhsRevFnExpr t,
-    toExpr t.incoming, toExpr t.action, toExpr t.goto,
-    toExpr t.pastSymb, toExpr t.pastStateSets, toExpr t.nullable,
-    toExpr t.first, toExpr t.items,
+    -- the eight array validator tables: emitted empty (the BTrees below carry the
+    -- real data; nothing reads these arrays from a build_tables% result)
+    toExpr (#[] : Array (Option GSym)), toExpr (#[] : Array GAction),
+    toExpr (#[] : Array (Array (Option Nat))), toExpr (#[] : Array (Array GSym)),
+    toExpr (#[] : Array (Array (Array Nat))), toExpr (#[] : Array Bool),
+    toExpr (#[] : Array (Array Nat)), toExpr (#[] : Array (Array (Nat × Nat × Nat))),
     -- BTree data for the verified accessors (incomingBT, actionBT, gotoBT,
     -- pastSymbBT, pastStateSetsBT, nullableBT, firstBT, itemsBT)
     mkBT (optTyOf gsymTy) (t.incoming.map toExpr),
