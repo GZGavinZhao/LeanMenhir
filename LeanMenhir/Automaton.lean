@@ -134,6 +134,17 @@ class Automaton extends Grammar where
   nullable_nterm : Nonterminal → Bool
   /-- Terminals that can begin a word produced by the nonterminal. -/
   first_nterm : Nonterminal → List Terminal
+  /-- An over-approximation of the automaton's defined gotos: it must contain every
+  `(s, nt)` for which `goto_table s nt` is defined (see `goto_enum_complete`). The
+  goto-based safety validators iterate this list — the *defined* gotos, which are
+  sparse — instead of probing every `(state, nonterminal)` pair (the dominant
+  kernel-`rfl` cost). Table bridges supply the sparse list from `gotoBT.toList`;
+  small/array bridges may supply the dense enumeration of all pairs. -/
+  goto_enum : List (State InitState NonInitState × Nonterminal)
+  /-- `goto_enum` covers every defined goto. This is what makes iterating
+  `goto_enum` sound: a `(s, nt)` whose goto is defined cannot be skipped. -/
+  goto_enum_complete : ∀ (s : State InitState NonInitState) (nt : Nonterminal),
+    goto_table s nt ≠ none → (s, nt) ∈ goto_enum
 
 instance instNonInitStateAlphabet [A : Automaton] : Alphabet A.NonInitState :=
   A.noninitstateAlphabet

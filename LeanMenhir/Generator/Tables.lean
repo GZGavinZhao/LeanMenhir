@@ -170,6 +170,80 @@ def gActionToActionBT (a : GAction) : Action (lastSymbOfBT g) (Fin (g.numProd + 
   | .defaultReduce p => .Default_reduce_act (cl g.numProd p)
   | .lookahead arr => .Lookahead_act (fun term => gLookToLookBT g term (arr.getD term.val .fail))
 
+/-! ### Goto table + sparse goto enumeration (BTree bridges)
+
+The goto lookup and the *defined-goto enumeration* the safety validators iterate
+(`Automaton.goto_enum`). `gotoEnumOfBT` reads only the defined gotos from
+`gotoBT.toList` (an `O(defined)` traversal), and `gotoEnumOfBT_complete` proves it
+covers every defined goto — the soundness obligation `Automaton.goto_enum_complete`. -/
+
+/-- Flattened goto key for `(s, nt)` (must match the key used to build `gotoBT`). -/
+def gotoKeyBT (s : State (Fin 1) (Fin (g.numNonInit + 1))) (nt : Fin (g.numNonterm + 1)) : Nat :=
+  (match s with | .Init _ => 0 | .Ninit n => n.val + 1) * (g.numNonterm + 1) + nt.val
+
+/-- The goto table, shared by the typed and monomorphic BTree bridges. -/
+def gotoTableOfBT (s : State (Fin 1) (Fin (g.numNonInit + 1))) (nt : Fin (g.numNonterm + 1)) :
+    Option { s2 : Fin (g.numNonInit + 1) //
+      (Symbol.NT nt : Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1))) = lastSymbOfBT g s2 } :=
+  match BTree.find none (gotoKeyBT g s nt) g.gotoBT with
+  | none => none
+  | some t =>
+      let target : Fin (g.numNonInit + 1) := cl g.numNonInit (t - 1)
+      if h : (Symbol.NT nt : Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1)))
+          = lastSymbOfBT g target then some ⟨target, h⟩ else none
+
+/-- Decode a flattened goto key back to `(state, nonterminal)` (inverse of
+`gotoKeyBT` on in-range inputs; see `decodeGotoBT_gotoKey`). -/
+def decodeGotoBT (key : Nat) :
+    State (Fin 1) (Fin (g.numNonInit + 1)) × Fin (g.numNonterm + 1) :=
+  let sf := key / (g.numNonterm + 1)
+  ((if sf = 0 then .Init 0 else .Ninit (cl g.numNonInit (sf - 1))), cl g.numNonterm (key % (g.numNonterm + 1)))
+
+/-- The defined gotos, read sparsely from the BTree (one entry per defined goto). -/
+def gotoEnumOfBT : List (State (Fin 1) (Fin (g.numNonInit + 1)) × Fin (g.numNonterm + 1)) :=
+  g.gotoBT.toList.map (fun kv => decodeGotoBT g kv.1)
+
+theorem decodeGotoBT_gotoKey (s : State (Fin 1) (Fin (g.numNonInit + 1)))
+    (nt : Fin (g.numNonterm + 1)) : decodeGotoBT g (gotoKeyBT g s nt) = (s, nt) := by
+  have hW : nt.val < g.numNonterm + 1 := nt.isLt
+  have hpos : 0 < g.numNonterm + 1 := Nat.succ_pos _
+  have hnt : cl g.numNonterm nt.val = nt := by
+    apply Fin.ext; simp only [cl]; exact Nat.min_eq_left (Nat.le_of_lt_succ nt.isLt)
+  cases s with
+  | Init i =>
+    have hi : i = (0 : Fin 1) := Fin.ext (by omega)
+    subst hi
+    simp only [decodeGotoBT, gotoKeyBT, Nat.zero_mul, Nat.zero_add,
+      Nat.div_eq_of_lt hW, Nat.mod_eq_of_lt hW, if_pos, hnt]
+  | Ninit n =>
+    have hmod : ((n.val + 1) * (g.numNonterm + 1) + nt.val) % (g.numNonterm + 1) = nt.val := by
+      rw [Nat.mul_comm, Nat.add_comm, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hW]
+    have hdiv : ((n.val + 1) * (g.numNonterm + 1) + nt.val) / (g.numNonterm + 1) = n.val + 1 := by
+      rw [Nat.mul_comm, Nat.add_comm, Nat.add_mul_div_left _ _ hpos, Nat.div_eq_of_lt hW, Nat.zero_add]
+    have hs : cl g.numNonInit n.val = n := by
+      apply Fin.ext; simp only [cl]; exact Nat.min_eq_left (Nat.le_of_lt_succ n.isLt)
+    simp only [decodeGotoBT, gotoKeyBT, hmod, hdiv, Nat.succ_ne_zero, if_false,
+      Nat.add_sub_cancel, hs, hnt]
+
+theorem gotoEnumOfBT_complete (s : State (Fin 1) (Fin (g.numNonInit + 1)))
+    (nt : Fin (g.numNonterm + 1)) (hne : gotoTableOfBT g s nt ≠ none) :
+    (s, nt) ∈ gotoEnumOfBT g := by
+  have hfind : BTree.find none (gotoKeyBT g s nt) g.gotoBT ≠ none := by
+    intro hf; exact hne (by simp only [gotoTableOfBT, hf])
+  have hmem := BTree.find_mem_toList none (gotoKeyBT g s nt) g.gotoBT hfind
+  have : decodeGotoBT g (gotoKeyBT g s nt) ∈ gotoEnumOfBT g :=
+    List.mem_map.2 ⟨(gotoKeyBT g s nt, _), hmem, rfl⟩
+  rwa [decodeGotoBT_gotoKey] at this
+
+/-- Dense enumeration of every `(s, nt)` pair — the trivial `goto_enum` for small /
+array bridges (always covers the defined gotos; see `mem_allPairs`). -/
+def allPairs {S NT : Type} [Enumerable S] [Enumerable NT] : List (S × NT) :=
+  (allList (α := S)).flatMap (fun s => (allList (α := NT)).map (fun nt => (s, nt)))
+
+theorem mem_allPairs {S NT : Type} [Enumerable S] [Enumerable NT] (s : S) (nt : NT) :
+    (s, nt) ∈ allPairs (S := S) (NT := NT) :=
+  List.mem_flatMap.2 ⟨s, allList_complete s, List.mem_map.2 ⟨nt, allList_complete nt, rfl⟩⟩
+
 variable (Val : Type) (actions : Nat → List Val → Val)
 
 /-- Build a genuine `Automaton` from the (untrusted) index-only tables `g`, with
@@ -231,6 +305,9 @@ def automatonOfTables : Automaton where
   -- the generated table. (The dummy nonterminal never occurs in a real RHS.)
   nullable_nterm := fun nt => if nt.val < g.numNonterm then g.nullable.getD nt.val false else true
   first_nterm := fun nt => (g.first.getD nt.val #[]).toList.map (cl g.numTerm)
+  -- dense enumeration (this small/array bridge does not need sparse goto iteration)
+  goto_enum := allPairs
+  goto_enum_complete := fun s nt _ => mem_allPairs s nt
 
 /-- BTree-backed monomorphic bridge: identical to `automatonOfTables` but every
 state/nonterminal-indexed lookup goes through `BTree.find` on the `…BT` fields, so
@@ -265,14 +342,7 @@ def automatonOfTablesBT : Automaton where
   action_table := fun s =>
     let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
     gActionToActionBT g (BTree.find (.lookahead #[]) flat g.actionBT)
-  goto_table := fun s nt =>
-    let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
-    match BTree.find none (flat * (g.numNonterm + 1) + nt.val) g.gotoBT with
-    | none => none
-    | some t =>
-        let target : Fin (g.numNonInit + 1) := cl g.numNonInit (t - 1)
-        if h : (Symbol.NT nt : Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1)))
-            = lastSymbOfBT g target then some ⟨target, h⟩ else none
+  goto_table := gotoTableOfBT g
   past_symb_of_non_init_state := fun n =>
     (BTree.find #[] (n.val + 1) g.pastSymbBT).toList.map (gsymToSymbol g)
   past_state_of_non_init_state := fun n =>
@@ -288,6 +358,9 @@ def automatonOfTablesBT : Automaton where
         lookaheads_item := [cl g.numTerm it.2.2] })
   nullable_nterm := fun nt => if nt.val < g.numNonterm then BTree.find false nt.val g.nullableBT else true
   first_nterm := fun nt => (BTree.find #[] nt.val g.firstBT).toList.map (cl g.numTerm)
+  -- sparse goto enumeration: iterate only the defined gotos (gotoBT.toList)
+  goto_enum := gotoEnumOfBT g
+  goto_enum_complete := gotoEnumOfBT_complete g
 
 /-! ### Heterogeneous (typed) bridge
 
@@ -398,14 +471,7 @@ def automatonOfTablesTyped (g : GenTables)
   action_table := fun s =>
     let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
     gActionToActionBT g (BTree.find (.lookahead #[]) flat g.actionBT)
-  goto_table := fun s nt =>
-    let flat := match s with | .Init _ => 0 | .Ninit n => n.val + 1
-    match BTree.find none (flat * (g.numNonterm + 1) + nt.val) g.gotoBT with
-    | none => none
-    | some t =>
-        let target : Fin (g.numNonInit + 1) := cl g.numNonInit (t - 1)
-        if h : (Symbol.NT nt : Symbol (Fin (g.numTerm + 1)) (Fin (g.numNonterm + 1)))
-            = lastSymbOfBT g target then some ⟨target, h⟩ else none
+  goto_table := gotoTableOfBT g
   past_symb_of_non_init_state := fun n =>
     (BTree.find #[] (n.val + 1) g.pastSymbBT).toList.map (gsymToSymbol g)
   past_state_of_non_init_state := fun n =>
@@ -421,6 +487,9 @@ def automatonOfTablesTyped (g : GenTables)
         lookaheads_item := [cl g.numTerm it.2.2] })
   nullable_nterm := fun nt => if nt.val < g.numNonterm then BTree.find false nt.val g.nullableBT else true
   first_nterm := fun nt => (BTree.find #[] nt.val g.firstBT).toList.map (cl g.numTerm)
+  -- sparse goto enumeration: iterate only the defined gotos (gotoBT.toList)
+  goto_enum := gotoEnumOfBT g
+  goto_enum_complete := gotoEnumOfBT_complete g
 
 end Gen
 end LeanMenhir

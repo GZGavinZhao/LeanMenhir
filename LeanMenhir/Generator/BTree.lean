@@ -51,4 +51,28 @@ def BTree.toList {α : Type u} : BTree α → List (Nat × α)
   | .leaf => []
   | .node k v lo hi => lo.toList ++ (k, v) :: hi.toList
 
+/-- If `find` returns a non-default value, that `(key, value)` is in `toList`. This
+is the soundness bridge for sparse iteration: every defined entry (one that `find`
+distinguishes from the default) is enumerated by `toList`. Needs no search-tree
+invariant — `find` only returns a node's value when the query equals that node's key. -/
+theorem BTree.find_mem_toList {α : Type u} (dflt : α) (q : Nat) :
+    ∀ (t : BTree α), BTree.find dflt q t ≠ dflt → (q, BTree.find dflt q t) ∈ t.toList := by
+  intro t
+  induction t with
+  | leaf => intro h; exact absurd rfl h
+  | node k v lo hi ihlo ihhi =>
+    intro h
+    simp only [BTree.find] at h ⊢
+    by_cases h1 : q < k
+    · simp only [h1, if_true] at h ⊢
+      exact List.mem_append_left _ (ihlo h)
+    · simp only [h1, if_false] at h ⊢
+      by_cases h2 : q == k
+      · have hqk : q = k := eq_of_beq h2
+        subst hqk
+        simp only [h2, if_true] at h ⊢
+        exact List.mem_append_right _ (by simp)
+      · simp only [h2] at h ⊢
+        exact List.mem_append_right _ (List.mem_cons_of_mem _ (ihhi h))
+
 end LeanMenhir.Gen

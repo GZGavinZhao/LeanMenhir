@@ -278,21 +278,27 @@ theorem isShiftHeadSymbs_correct : isShiftHeadSymbs = true → shiftHeadSymbs :=
     | Reduce_act p => intro _; trivial
     | Fail_act => intro _; trivial
 
-/-- Boolean validator for `gotoHeadSymbs`. -/
+/-- Boolean validator for `gotoHeadSymbs`. Iterates `A.goto_enum` (the *defined*
+gotos, sparse) instead of probing every `(state, nonterminal)` pair — sound because
+`A.goto_enum_complete` guarantees every defined goto is listed. -/
 def isGotoHeadSymbs : Bool :=
-  Allb A.State (fun s => Allb A.Nonterminal (fun nt =>
+  A.goto_enum.all (fun (s, nt) =>
     match A.goto_table s nt with
     | some ⟨s2, _⟩ => isPrefix (A.past_symb_of_non_init_state s2) (headSymbsOfState s)
-    | none => true))
+    | none => true)
 
 theorem isGotoHeadSymbs_correct : isGotoHeadSymbs = true → gotoHeadSymbs := by
-  intro h
-  refine forall_of_Allb (P := fun s => _) (fun s hs => ?_) h
-  refine forall_of_Allb (P := fun nt => _) (fun nt hnt => ?_) hs
-  revert hnt
+  intro h s nt
   cases hg : A.goto_table s nt with
-  | none => intro _; trivial
-  | some v => obtain ⟨s2, e⟩ := v; intro hnt; exact isPrefix_correct _ _ hnt
+  | none => trivial
+  | some v =>
+    obtain ⟨s2, e⟩ := v
+    have hmem : (s, nt) ∈ A.goto_enum :=
+      A.goto_enum_complete s nt (by rw [hg]; exact Option.some_ne_none _)
+    simp only [isGotoHeadSymbs, List.all_eq_true] at h
+    have hp := h (s, nt) hmem
+    simp only [hg] at hp
+    exact isPrefix_correct _ _ hp
 
 /-- Boolean validator for `shiftPastState`. -/
 def isShiftPastState : Bool :=
@@ -318,21 +324,26 @@ theorem isShiftPastState_correct : isShiftPastState = true → shiftPastState :=
     | Reduce_act p => intro _; trivial
     | Fail_act => intro _; trivial
 
-/-- Boolean validator for `gotoPastState`. -/
+/-- Boolean validator for `gotoPastState`. Iterates `A.goto_enum` (sparse) instead
+of probing every `(state, nonterminal)` pair; sound via `A.goto_enum_complete`. -/
 def isGotoPastState : Bool :=
-  Allb A.State (fun s => Allb A.Nonterminal (fun nt =>
+  A.goto_enum.all (fun (s, nt) =>
     match A.goto_table s nt with
     | some ⟨s2, _⟩ => isPrefixPred (A.past_state_of_non_init_state s2) (headStatesOfState s)
-    | none => true))
+    | none => true)
 
 theorem isGotoPastState_correct : isGotoPastState = true → gotoPastState := by
-  intro h
-  refine forall_of_Allb (P := fun s => _) (fun s hs => ?_) h
-  refine forall_of_Allb (P := fun nt => _) (fun nt hnt => ?_) hs
-  revert hnt
+  intro h s nt
   cases hg : A.goto_table s nt with
-  | none => intro _; trivial
-  | some v => obtain ⟨s2, e⟩ := v; intro hnt; exact isPrefixPred_correct _ _ hnt
+  | none => trivial
+  | some v =>
+    obtain ⟨s2, e⟩ := v
+    have hmem : (s, nt) ∈ A.goto_enum :=
+      A.goto_enum_complete s nt (by rw [hg]; exact Option.some_ne_none _)
+    simp only [isGotoPastState, List.all_eq_true] at h
+    have hp := h (s, nt) hmem
+    simp only [hg] at hp
+    exact isPrefixPred_correct _ _ hp
 
 /-- Boolean validator for `reduceOk`. -/
 def isReduceOk : Bool :=
