@@ -35,8 +35,25 @@ def grammar : Grammar0 where
   ]
 
 /-- The generated LR tables (untrusted) — built with the **SLR(1)** generator
-(`buildTablesSLR`); the `isSafe`/`isComplete` validators certify the result. -/
-def tables : GenTables := grammar.buildTablesSLR
+(`buildTablesSLR`), but with the grammar skeleton pinned to `grammar` via
+`tabulateSLR`. The `isSafe`/`isComplete` validators certify the automaton. -/
+def tables : GenTables := grammar.tabulateSLR
+
+/-- **The generated tables describe exactly `grammar`.** Because `tables` takes its
+grammar-shaped fields straight from `grammar` (via `tabulateSLR`), and `gram`/
+`automaton` below are built from `tables`, the soundness/completeness/unambiguity
+theorems — stated against `gram` — are statements about *this* `grammar` (the
+`prods`/counts written above). This holds by kernel `rfl` for *every* grammar (see
+`Grammar0.tabulateSLR_faithful`); no per-grammar `native_decide`, no compiler trust.
+The generator is trusted only for the automaton, which the validators check. -/
+theorem tables_faithful :
+    tables.numTerm = grammar.numTerm ∧
+    tables.numNonterm = grammar.numNonterm ∧
+    tables.numProd = grammar.numProd ∧
+    tables.startNonterm = grammar.start ∧
+    tables.prodLhs = grammar.prods.map (·.1) ∧
+    tables.prodRhsRev = grammar.prods.map (fun p => p.2.reverse) :=
+  grammar.tabulateSLR_faithful
 
 /-- Semantic actions over `Nat` (`collectArrows` supplies the popped values in
 reverse-RHS order, i.e. last symbol first). -/

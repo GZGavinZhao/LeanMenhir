@@ -497,6 +497,65 @@ partial def buildTablesSLR : GenTables := Id.run do
 
 end Grammar0
 
+/-! ### Pinning the grammar skeleton to the source
+
+`buildTables`/`buildTablesSLR` are `partial`, so their output is opaque to the
+kernel — even the *grammar* fields they merely copy (`prodLhs`, `prodRhsRev`,
+counts, start) don't reduce, which is why a "the tables describe my grammar" check
+would otherwise need `native_decide`.
+
+`tabulate`/`tabulateSLR` fix this at the source: they take the grammar-shaped
+fields *directly* from `g` and keep only the automaton fields from the generator.
+The result is that the verified `Grammar` built from `g.tabulate …` is `g`'s
+grammar **by construction** — `tabulateSLR_faithful` holds by `rfl` for every `g`,
+no per-grammar certificate. The generator is then trusted only for the automaton,
+which the `isSafe`/`isComplete` validators check against this grammar. -/
+namespace Grammar0
+variable (g : Grammar0)
+
+/-- Overwrite the grammar-shaped fields of `t` (counts, start, productions) with
+the values read straight from `g`, keeping `t`'s automaton fields
+(action/goto/items/first/nullable/…). -/
+def withGrammarSkeleton (t : GenTables) : GenTables :=
+  { t with
+    numTerm := g.numTerm
+    numNonterm := g.numNonterm
+    numProd := g.numProd
+    startNonterm := g.start
+    prodLhs := g.prods.map (·.1)
+    prodRhsRev := g.prods.map (fun p => p.2.reverse) }
+
+/-- SLR(1) tables whose grammar skeleton is pinned to `g` (see `withGrammarSkeleton`). -/
+def tabulateSLR : GenTables := g.withGrammarSkeleton g.buildTablesSLR
+
+/-- Canonical LR(1) tables whose grammar skeleton is pinned to `g`. -/
+def tabulate : GenTables := g.withGrammarSkeleton g.buildTables
+
+/-- **The grammar skeleton of `g.withGrammarSkeleton t` is exactly `g`'s — by
+construction, kernel `rfl`, for every `g` and `t`.** So a `Grammar` built from
+`g.tabulate`/`g.tabulateSLR` is `g`'s grammar with no per-grammar check: the
+parser correctness theorems stated against it are about *this* `g`. -/
+theorem withGrammarSkeleton_faithful (t : GenTables) :
+    (g.withGrammarSkeleton t).numTerm = g.numTerm ∧
+    (g.withGrammarSkeleton t).numNonterm = g.numNonterm ∧
+    (g.withGrammarSkeleton t).numProd = g.numProd ∧
+    (g.withGrammarSkeleton t).startNonterm = g.start ∧
+    (g.withGrammarSkeleton t).prodLhs = g.prods.map (·.1) ∧
+    (g.withGrammarSkeleton t).prodRhsRev = g.prods.map (fun p => p.2.reverse) :=
+  ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- `g.tabulateSLR` describes exactly `g` (corollary of `withGrammarSkeleton_faithful`). -/
+theorem tabulateSLR_faithful :
+    (g.tabulateSLR).numTerm = g.numTerm ∧
+    (g.tabulateSLR).numNonterm = g.numNonterm ∧
+    (g.tabulateSLR).numProd = g.numProd ∧
+    (g.tabulateSLR).startNonterm = g.start ∧
+    (g.tabulateSLR).prodLhs = g.prods.map (·.1) ∧
+    (g.tabulateSLR).prodRhsRev = g.prods.map (fun p => p.2.reverse) :=
+  g.withGrammarSkeleton_faithful _
+
+end Grammar0
+
 /-! ### Emitting concrete tables as Lean source
 
 The generator is `partial`, so its output does not reduce in the kernel. To get
