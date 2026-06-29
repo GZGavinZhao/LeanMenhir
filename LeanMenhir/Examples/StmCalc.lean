@@ -103,11 +103,12 @@ def actions : (p : Fin (stmTables.numProd + 1)) →
 bridge. -/
 instance automaton : Automaton := automatonOfTablesTyped stmTables ntType termType Unit actions
 
-/-- Safety — kernel `rfl` (BTree-backed tables; no compiler-trust axiom). -/
-theorem stmSafe : Main.safeValidator (A := automaton) () = true := by rfl
+/-- Safety — kernel `decide` (BTree-backed tables; no compiler-trust axiom). -/
+theorem stmSafe : safe (A := automaton) := by decide
 
-/-- Completeness — kernel `rfl` (BTree-backed tables). -/
-theorem stmComplete : Main.completeValidator (A := automaton) () = true := by rfl
+/-- Completeness — kernel `decide` (BTree-backed tables); the validator is
+sound-only, so the `complete` proposition is obtained through the bridge. -/
+theorem stmComplete : complete (A := automaton) := complete_is_validator (by decide)
 
 /-! ### Lexer + end-to-end parsing -/
 

@@ -18,51 +18,43 @@ open LeanMenhir.Buf
 
 variable [A : Automaton]
 
-/-- The safety validator: `safeValidator () = true` is the precondition discharged
-(by `decide`/`native_decide`) for a concrete automaton (Coq `safe_validator`). -/
-def safeValidator (_ : Unit) : Bool := isSafe ()
-
-/-- The runnable parser: given a machine-checked proof that the safety validator
-accepts the tables, parse `buffer` with budget `2 ^ logNSteps` (Coq `Main.parse`). -/
-def parse (init : A.InitState) (hsafe : safeValidator () = true) (logNSteps : Nat)
+/-- The runnable parser: given a proof that the automaton is `safe` (discharged by
+`by decide`/`by native_decide` via the `Decidable safe` instance), parse `buffer`
+with budget `2 ^ logNSteps` (Coq `Main.parse`). -/
+def parse (init : A.InitState) (hsafe : safe) (logNSteps : Nat)
     (buffer : Buffer) : ParseResult (A.symbol_semantic_type (.NT (A.start_nt init))) :=
-  LeanMenhir.parse init (safe_is_validator hsafe) buffer logNSteps
+  LeanMenhir.parse init hsafe buffer logNSteps
 
 /-- **Soundness** (Coq `Main.parse_correct`): a successful parse returns a real
 parse tree of the recognised word with the produced semantic value. -/
-theorem parse_correct (init : A.InitState) (hsafe : safeValidator () = true)
+theorem parse_correct (init : A.InitState) (hsafe : safe)
     (logNSteps : Nat) (buffer : Buffer) :
     match parse init hsafe logNSteps buffer with
     | .Parsed sem bufferNew =>
         ∃ (word : List A.Token) (pt : ParseTree (.NT (A.start_nt init)) word),
           buffer.get = (word ++ₛ bufferNew).get ∧ ptSem pt = sem
     | _ => True :=
-  LeanMenhir.parse_correct init (safe_is_validator hsafe) buffer logNSteps
+  LeanMenhir.parse_correct init hsafe buffer logNSteps
 
-/-- The completeness validator: `completeValidator () = true` is discharged (by
-`decide`/`native_decide`) for a concrete automaton (Coq `complete_validator`). -/
-def completeValidator (_ : Unit) : Bool := isComplete ()
-
-/-- **Completeness** (Coq `Main.parse_complete`): if the completeness validator
-accepts the tables, then for *every* parse tree of `word`, parsing `word`
-(followed by any `bufferEnd`) with budget `2 ^ logNSteps` returns that tree's
-semantics, consumes exactly `word`, and `pt_size tree ≤ 2 ^ logNSteps`; with too
-little fuel it times out, and it never fails. -/
-theorem parse_complete (init : A.InitState) (hsafe : safeValidator () = true)
-    (hcomplete : completeValidator () = true) (logNSteps : Nat) (word : List A.Token)
+/-- **Completeness** (Coq `Main.parse_complete`): if the automaton is `complete`,
+then for *every* parse tree of `word`, parsing `word` (followed by any `bufferEnd`)
+with budget `2 ^ logNSteps` returns that tree's semantics, consumes exactly `word`,
+and `pt_size tree ≤ 2 ^ logNSteps`; with too little fuel it times out, and it never
+fails. -/
+theorem parse_complete (init : A.InitState) (hsafe : safe)
+    (hcomplete : complete) (logNSteps : Nat) (word : List A.Token)
     (bufferEnd : Buffer) (tree : ParseTree (.NT (A.start_nt init)) word) :
     match parse init hsafe logNSteps (word ++ₛ bufferEnd) with
     | .Parsed sem buff =>
         sem = ptSem tree ∧ buff = bufferEnd ∧ ptSize tree ≤ 2 ^ logNSteps
     | .Timeout => 2 ^ logNSteps < ptSize tree
     | .Fail _ _ => False :=
-  LeanMenhir.parse_complete init word bufferEnd (safe_is_validator hsafe)
-    (complete_is_validator hcomplete) tree logNSteps
+  LeanMenhir.parse_complete init word bufferEnd hsafe hcomplete tree logNSteps
 
-/-- **Unambiguity** (Coq `Main.unambiguity`): if both validators accept and the
-token type is inhabited, any two parse trees of the same word have the same
-semantic value. -/
-theorem unambiguity (hsafe : safeValidator () = true) (hcomplete : completeValidator () = true)
+/-- **Unambiguity** (Coq `Main.unambiguity`): if the automaton is `safe` and
+`complete` and the token type is inhabited, any two parse trees of the same word
+have the same semantic value. -/
+theorem unambiguity (hsafe : safe) (hcomplete : complete)
     (tok : A.Token) (init : A.InitState) (word : List A.Token)
     (tree1 tree2 : ParseTree (.NT (A.start_nt init)) word) :
     ptSem tree1 = ptSem tree2 := by

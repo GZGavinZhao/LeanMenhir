@@ -50,12 +50,12 @@ def actions : Nat → List Nat → Nat
 instance automaton : Automaton := automatonOfTables tables Nat actions
 
 /-- The safety validator accepts the generated tables — checked by computation. -/
-theorem isSafe_ok : Main.safeValidator (A := automaton) () = true := by native_decide
+theorem isSafe_ok : safe (A := automaton) := by native_decide
 
 /-- The **completeness** validator also accepts the generated tables. Combined
 with `Main.parse_complete`/`Main.unambiguity`, this certifies that the generated
 parser recognises *every* parse tree of the grammar and is unambiguous. -/
-theorem isComplete_ok : Main.completeValidator (A := automaton) () = true := by native_decide
+theorem isComplete_ok : complete (A := automaton) := complete_is_validator (by native_decide)
 
 /-- Parse a token stream (terminal index, value), ending in an infinite `eof`. -/
 def parseTokens (toks : List (Fin 4 × Nat)) : Option Nat :=

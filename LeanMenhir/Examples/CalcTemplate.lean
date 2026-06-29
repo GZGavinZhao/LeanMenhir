@@ -129,11 +129,12 @@ def actions : (p : Fin (tables.numProd + 1)) →
 /-- The verified automaton; tokens carry a `Position` for error reporting. -/
 instance automaton : Automaton := automatonOfTablesTyped tables ntType termType Position actions
 
-/-- Safety — kernel `rfl` (BTree-backed tables; no compiler-trust axiom). -/
-theorem calcSafe : Main.safeValidator (A := automaton) () = true := by rfl
+/-- Safety — kernel `decide` (BTree-backed tables; no compiler-trust axiom). -/
+theorem calcSafe : safe (A := automaton) := by decide
 
-/-- Completeness — kernel `rfl` (BTree-backed tables). -/
-theorem calcComplete : Main.completeValidator (A := automaton) () = true := by rfl
+/-- Completeness — kernel `decide` (BTree-backed tables); the validator is
+sound-only, so the `complete` proposition is obtained through the bridge. -/
+theorem calcComplete : complete (A := automaton) := complete_is_validator (by decide)
 
 /-- The automaton's token type: `Position × Σ t, termType t`. -/
 abbrev Tok : Type := automaton.Token

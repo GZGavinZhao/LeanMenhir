@@ -32,4 +32,12 @@ theorem forall_of_Allb {α : Type} [Enumerable α] {f : α → Bool} {P : α →
   rw [Allb, List.all_eq_true] at h
   exact hf x (h x (allList_complete x))
 
+/-- Converse of `forall_of_Allb`: if the boolean check holds for every element,
+the `Allb` is `true`. Used by the reverse ("validator completeness") direction
+that powers the `Decidable safe`/`Decidable complete` instances. -/
+theorem Allb_of_forall {α : Type} [Enumerable α] {f : α → Bool}
+    (h : ∀ x, f x = true) : Allb α f = true := by
+  rw [Allb, List.all_eq_true]
+  exact fun x _ => h x
+
 end LeanMenhir

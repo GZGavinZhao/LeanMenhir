@@ -369,16 +369,140 @@ theorem isReduceOk_correct : isReduceOk = true → reduceOk := by
     | Fail_act => intro _; trivial
 
 /-- The boolean safety validator (Coq `is_safe`). -/
-def isSafe (_ : Unit) : Bool :=
+def isSafe : Bool :=
   isShiftHeadSymbs && isGotoHeadSymbs && isShiftPastState && isGotoPastState && isReduceOk
 
-/-- The validator is correct: if `isSafe () = true`, the automaton is `safe`
+/-- The validator is sound: if `isSafe = true`, the automaton is `safe`
 (Coq `safe_is_validator`). -/
-theorem safe_is_validator : isSafe () = true → safe := by
+theorem safe_is_validator : isSafe = true → safe := by
   intro h
   simp only [isSafe, Bool.and_eq_true] at h
   obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := h
   exact ⟨isShiftHeadSymbs_correct h1, isGotoHeadSymbs_correct h2,
     isShiftPastState_correct h3, isGotoPastState_correct h4, isReduceOk_correct h5⟩
+
+/-! ### Reverse direction (validator completeness) and `Decidable safe`
+
+The forward `is…_correct` lemmas above give `is… = true → …`. To expose `safe` as
+a genuine `Decidable` proposition — so a concrete automaton discharges it with
+`by decide`/`by native_decide` instead of an `isSafe = true` boolean obligation —
+we also prove the converse `… → is… = true` and bundle both into an iff. The
+`Decidable safe` instance routes evaluation through the existing (sparse,
+performance-tuned) `isSafe`, so kernel/native `decide` cost is unchanged. -/
+
+omit A in
+theorem isPrefix_complete {σ : Type} [Comparable σ] [ComparableLeibnizEq σ] :
+    ∀ {l1 l2 : List σ}, Prefix l1 l2 → isPrefix l1 l2 = true
+  | _, _, .nil _ => rfl
+  | _, _, .cons x h => by
+    simp only [isPrefix, Bool.and_eq_true]
+    exact ⟨compareEqb_refl x, isPrefix_complete h⟩
+
+theorem isPrefixPred_complete :
+    ∀ {l1 l2 : List (A.State → Bool)}, PrefixPred l1 l2 → isPrefixPred l1 l2 = true
+  | _, _, .nil _ => rfl
+  | _, _, .cons _ _ himpl h => by
+    simp only [isPrefixPred, Bool.and_eq_true]
+    exact ⟨Allb_of_forall himpl, isPrefixPred_complete h⟩
+
+theorem isStateValidAfterPop_correct (s : A.State) :
+    ∀ (toPop : List (Symbol A.Terminal A.Nonterminal)) (annot : List (A.State → Bool)),
+      isStateValidAfterPop s toPop annot = true → StateValidAfterPop s toPop annot := by
+  intro toPop annot
+  induction annot generalizing toPop with
+  | nil => intro _; exact StateValidAfterPop.nil2 toPop
+  | cons p pl ih =>
+    cases toPop with
+    | nil => intro h; exact StateValidAfterPop.nil1 p pl h
+    | cons t sl => intro h; exact StateValidAfterPop.cons t sl p pl (ih sl h)
+
+theorem isValidForReduce_complete (s : A.State) (prod : A.Production) :
+    validForReduce s prod → isValidForReduce s prod = true := by
+  intro h
+  obtain ⟨hpref, hgoto⟩ := h
+  simp only [isValidForReduce, Bool.and_eq_true]
+  refine ⟨isPrefix_complete hpref, Allb_of_forall (fun stateNew => ?_)⟩
+  by_cases hsv : isStateValidAfterPop stateNew (A.prod_rhs_rev prod) (headStatesOfState s) = true
+  · rw [if_pos hsv]
+    have hg := hgoto stateNew (isStateValidAfterPop_correct stateNew _ _ hsv)
+    revert hg
+    cases A.goto_table stateNew (A.prod_lhs prod) with
+    | some v => intro _; rfl
+    | none =>
+      cases stateNew with
+      | Init i => intro hk; exact (compareEqb_iff _ _).2 hk
+      | Ninit n => intro hk; exact hk.elim
+  · rw [Bool.not_eq_true] at hsv; rw [if_neg (by rw [hsv]; decide)]
+
+theorem isShiftHeadSymbs_complete (h : shiftHeadSymbs) : isShiftHeadSymbs = true := by
+  apply Allb_of_forall; intro s
+  have hs := h s
+  cases ha : A.action_table s with
+  | Default_reduce_act p => rfl
+  | Lookahead_act awp =>
+    simp only [ha] at hs ⊢
+    apply Allb_of_forall; intro t
+    have ht := hs t
+    cases haw : awp t with
+    | Shift_act s2 e => simp only [haw] at ht ⊢; exact isPrefix_complete ht
+    | Reduce_act p => rfl
+    | Fail_act => rfl
+
+theorem isGotoHeadSymbs_complete (h : gotoHeadSymbs) : isGotoHeadSymbs = true := by
+  simp only [isGotoHeadSymbs, List.all_eq_true]
+  rintro ⟨s, nt⟩ _
+  have hp := h s nt
+  cases hg : A.goto_table s nt with
+  | none => rfl
+  | some v => obtain ⟨s2, e⟩ := v; simp only [hg] at hp ⊢; exact isPrefix_complete hp
+
+theorem isShiftPastState_complete (h : shiftPastState) : isShiftPastState = true := by
+  apply Allb_of_forall; intro s
+  have hs := h s
+  cases ha : A.action_table s with
+  | Default_reduce_act p => rfl
+  | Lookahead_act awp =>
+    simp only [ha] at hs ⊢
+    apply Allb_of_forall; intro t
+    have ht := hs t
+    cases haw : awp t with
+    | Shift_act s2 e => simp only [haw] at ht ⊢; exact isPrefixPred_complete ht
+    | Reduce_act p => rfl
+    | Fail_act => rfl
+
+theorem isGotoPastState_complete (h : gotoPastState) : isGotoPastState = true := by
+  simp only [isGotoPastState, List.all_eq_true]
+  rintro ⟨s, nt⟩ _
+  have hp := h s nt
+  cases hg : A.goto_table s nt with
+  | none => rfl
+  | some v => obtain ⟨s2, e⟩ := v; simp only [hg] at hp ⊢; exact isPrefixPred_complete hp
+
+theorem isReduceOk_complete (h : reduceOk) : isReduceOk = true := by
+  apply Allb_of_forall; intro s
+  have hs := h s
+  cases ha : A.action_table s with
+  | Default_reduce_act p =>
+    simp only [ha] at hs ⊢; exact isValidForReduce_complete _ _ hs
+  | Lookahead_act awp =>
+    simp only [ha] at hs ⊢
+    apply Allb_of_forall; intro t
+    have ht := hs t
+    cases haw : awp t with
+    | Shift_act s2 e => rfl
+    | Reduce_act p => simp only [haw] at ht ⊢; exact isValidForReduce_complete _ _ ht
+    | Fail_act => rfl
+
+/-- The validator is exact: `isSafe = true` iff the automaton is `safe`. -/
+theorem isSafe_iff_safe : isSafe = true ↔ safe := by
+  refine ⟨safe_is_validator, fun h => ?_⟩
+  simp only [isSafe, Bool.and_eq_true]
+  exact ⟨⟨⟨⟨isShiftHeadSymbs_complete h.shiftHeadSymbs, isGotoHeadSymbs_complete h.gotoHeadSymbs⟩,
+    isShiftPastState_complete h.shiftPastState⟩, isGotoPastState_complete h.gotoPastState⟩,
+    isReduceOk_complete h.reduceOk⟩
+
+/-- `safe` is decidable, evaluated through the performance-tuned `isSafe`. A
+concrete automaton therefore discharges safety with `by decide`/`by native_decide`. -/
+instance : Decidable (safe (A := A)) := decidable_of_iff _ isSafe_iff_safe
 
 end LeanMenhir

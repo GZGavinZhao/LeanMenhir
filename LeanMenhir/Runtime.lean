@@ -39,7 +39,7 @@ abbrev ResultType (A : Automaton) (init : A.InitState) : Type :=
 with the infinite `eof` filler, and project the `ParseResult` into `Except E`.
 `onFail`/`onTimeout` build the caller's error type from the failure cases. -/
 def parseList {E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator () = true)
+    (init : A.InitState) (hsafe : safe)
     (eof : A.Token) (toks : List A.Token)
     (onFail : A.State → A.Token → E) (onTimeout : E) :
     Except E (ResultType A init) :=
@@ -52,7 +52,7 @@ def parseList {E : Type}
 e.g. an unlexable token), then `parseList`. The external token type `Tok` is
 whatever the lexer produces (e.g. BNFC's `Token`). -/
 def parseWith {Tok E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator () = true)
+    (init : A.InitState) (hsafe : safe)
     (eof : A.Token) (adapt : Tok → Except E A.Token)
     (onFail : A.State → A.Token → E) (onTimeout : E)
     (input : List Tok) :

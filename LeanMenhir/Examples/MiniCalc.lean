@@ -95,7 +95,7 @@ instance automaton : Automaton := automatonOfTables miniTables Expr actions
 
 /-- The generated tables are safe — certified by **kernel `decide`** (the only
 trusted component is the Lean kernel; no `native_decide`/compiler-trust axiom). -/
-theorem minicalcSafe : Main.safeValidator (A := automaton) () = true := by decide
+theorem minicalcSafe : safe (A := automaton) := by decide
 
 /-! ### Lexer + end-to-end parsing -/
 
@@ -185,7 +185,7 @@ is unambiguous (any two trees of a word have the same AST). -/
 
 /-- The **completeness** validator accepts the generated tables — certified by
 **kernel `decide`** (no `native_decide`/compiler-trust axiom). -/
-theorem minicalcComplete : Main.completeValidator (A := automaton) () = true := by decide
+theorem minicalcComplete : complete (A := automaton) := complete_is_validator (by decide)
 
 /-- Every parse `tree`, given enough fuel, is parsed to its own AST, consuming
 exactly `word`. -/

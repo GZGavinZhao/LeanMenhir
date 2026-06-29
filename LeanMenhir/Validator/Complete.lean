@@ -459,13 +459,22 @@ theorem isNonTerminalClosed_correct : isNonTerminalClosed = true → nonTerminal
 /-! ### The complete validator -/
 
 /-- The boolean completeness validator (Coq `is_complete`). -/
-def isComplete (_ : Unit) : Bool :=
+def isComplete : Bool :=
   isNullableStable && isFirstStable && isStartFuture && isTerminalShift
   && isEndReduce && isNonTerminalGoto && isStartGoto && isNonTerminalClosed
 
-/-- The validator is correct: if `isComplete () = true`, the automaton is
-`complete` (Coq `complete_is_validator`). -/
-theorem complete_is_validator : isComplete () = true → complete := by
+/-- The validator is sound: if `isComplete = true`, the automaton is `complete`
+(Coq `complete_is_validator`).
+
+Unlike `safe` (see `isSafe_iff_safe`/`Decidable safe`), `complete` is *not*
+equivalent to its validator and so is **not** `Decidable` through `isComplete`:
+`isStartFuture` checks that each lookahead occurs in the `dot_pos = 0` item, while
+`startFuture` only asks for `stateHasFuture … (futureOfProd p 0) t`, an existential
+`∃ dotPos` whose witness need not be `0`. The validator is therefore strictly
+stronger than the proposition, so only the `→` direction holds. A concrete
+automaton discharges completeness with `complete_is_validator (by native_decide)`
+(or `by decide`). -/
+theorem complete_is_validator : isComplete = true → complete := by
   intro h
   simp only [isComplete, Bool.and_eq_true] at h
   obtain ⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩, h8⟩ := h
