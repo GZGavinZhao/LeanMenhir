@@ -3,6 +3,103 @@
 Tracking the port of `coq-menhirlib` (`refs/menhir/coq-menhirlib/src/*.v`) to
 Lean 4. See `lean-menhir-handoff.md` for the overall plan and milestones.
 
+## 2026-06-29 — Kernel-`rfl` (no-compiler-trust) certificate path: BTree + sparse goto
+
+Goal: improve **compilation time of the kernel-checked (`rfl`, no `native_decide` /
+no `Lean.ofReduceBool`) per-grammar certificates**, so the no-compiler-trust path
+becomes viable at BNFC scale. This supersedes the 2026-06-26 "ship `native_decide`,
+keep `BTree` as an experiment" decision: the `BTree` + `rfl` path is now the
+**default** for the typed-bridge examples.
+
+### Cost model (the thing to internalise)
+The Lean **kernel** has no native arrays — only `Nat`/`String` are GMP-accelerated.
+So `Array.getD` / `List` indexing reduces in **O(index)** (it walks the backing
+`List`), turning every table lookup O(n) and the nested-loop validators into a
+polynomial blow-up. The kernel **does whnf-cache**, so naive "hoist the redundant
+recomputation" optimisations often gain nothing (measured). The two effective
+moves are: (a) **O(log n) `BTree` data** (shared-subterm descent, no key-into-body
+beta copy) for lookups, and (b) **sparse iteration** over only the defined entries
+instead of probing a dense domain.
+
+### Committed this session (4 commits on `main`, atop `knxwsstx`)
+1. `wpupsvml` — **BTree-backed kernel-`rfl` accessors.** `Generator/BTree.lean`
+   (`BTree` + O(log) `BTree.find`); 8 `GenTables` BTree views; `build_tables%`
+   emits balanced `BTree` literals; the typed bridge `automatonOfTablesTyped` reads
+   them; new monomorphic `automatonOfTablesBT`. Typed-bridge example certs
+   `decide`→`rfl` (StmCalc/ScaleTest/CalcTemplate). MiniCalc keeps the array bridge.
+2. `zxpsvlqn` — **BTree-only validator-table emission.** `build_tables%` emits the 8
+   array validator tables EMPTY (the BTrees carry the data); literal-elaboration
+   ("base") cost −38…54%.
+3. `owvykkzq` — **defined-only `gotoBT` + `BTree.toList`.** Goto is sparse; emit only
+   defined gotos (`BTree.find` returns the `none` default for omitted keys, so
+   behaviour is identical). Base 17→3s on the test grammar; also halves the dense
+   goto-scan and shrinks L0's goto tree ~43K→~480 nodes.
+4. `kqrxxszk` — **sparse goto iteration.** `Automaton` gains `goto_enum` +
+   obligation `goto_enum_complete` (every defined goto is listed). `isGotoHeadSymbs`
+   /`isGotoPastState` iterate `goto_enum.all` instead of `Allb State × Allb Nonterm`.
+   The `gotoHeadSymbs`/`gotoPastState`/`safe` **specs stay byte-identical**; only the
+   boolean bodies + soundness proofs change. `BTree.find_mem_toList` is the soundness
+   bridge; `gotoEnumOfBT`/`decodeGotoBT_gotoKey`/`gotoEnumOfBT_complete` discharge it
+   for the BTree bridges; the array bridge uses dense `allPairs`/`mem_allPairs`.
+
+All certs across array (`decide`) and BTree (`rfl`) bridges verify with axioms
+`{propext, Classical.choice, Quot.sound}` — **no `sorryAx`, no `Lean.ofReduceBool`**
+(`Classical.choice` is pre-existing from the validator/interpreter defs, not new).
+The BNFC-generated L0 uses `build_tables%` + typed bridge + `native_decide` and
+references none of the emptied arrays — it gets the sparse `goto_enum` automatically
+and needs **no emitter change**.
+
+### Ground-truth L0 benchmark (480 states, 256 prods, 90 NT, 74 terms)
+**Milestone:** both L0 certs discharge via kernel `rfl` — **safety 8:52, completeness
+21:13** (the prior `vuvtlqru` experiment only ever confirmed *safety*; full
+no-compiler-trust L0 completeness is new). Table-build (build_tables% + monomorphic
+bridge, trivial actions) is ~32s (vs the old ~833s typed-bridge olean — that cost was
+the dependent `actions` dispatcher, not the tables).
+
+Per-validator `rfl` cert time on the real L0 grammar (the authoritative breakdown):
+
+| validator | L0 | dominant cost |
+|---|---|---|
+| `isNonTerminalClosed` | ~482s | **`findItemsMap`** (scan-only is 20s; firstWordSet +1s) |
+| `isTerminalShift` | ~372s | `findItemsMap` + O(numTerm) lookahead-array walk |
+| `isShiftPastState` | ~226s | `isPrefixPred` inner `Allb A.State` over state-set preds |
+| `isReduceOk` | ~197s | `isStateValidAfterPop` + `Allb A.State` per reduce |
+| `isGotoPastState` | ~128s | `isPrefixPred` inner `Allb A.State` |
+| `isShiftHeadSymbs` | ~73s | O(numTerm) lookahead-array walk |
+| `isNonTerminalGoto` | ~70s | `findItemsMap` |
+| `isGotoHeadSymbs` | **~1.5s** | sparse goto (this session) — was a chunk of the dense scan |
+
+Sparse goto saved ~30% of safety (12.7→8.9 min); it was **not** the majority — the
+nest synthetic grammar (numNonterm=82) over-weighted it.
+
+### Lessons (important)
+- **Synthetic grammars are unrepresentative; benchmark on L0 directly.** The chain
+  grammar (unbounded terminal alphabet) inflated `isTerminalShift`; the nest grammar
+  (deep stacks, tiny item sets) inflated safety state-set work and made completeness
+  look cheap. Both conclusions were wrong for L0.
+- **The archived `isNonTerminalClosedFast` (`wuotpxzm`) is ineffective** — measured
+  no gain (kernel whnf-caches the redundant `findItemsMap`/`firstWordSet`). Do not
+  re-attempt that hoist.
+- The L0 completeness bottleneck is **`findItemsMap`** (the `items_of_state` O(scan)),
+  shared across `isNonTerminalClosed`/`isTerminalShift`/`isNonTerminalGoto` (~900s of
+  ~1240s). A productions-by-lhs index would save only ~20s — **not** the fix. A
+  `let`-hoist of `findItemsMap` gains nothing on L0 (524s ≈ 482s).
+
+### Decision: PAUSE the kernel-`rfl` optimisation campaign
+`native_decide` L0 (~5 min, compile-dominated) is the shipping path and already
+works. Kernel-`rfl` works end-to-end (~30 min) and is the no-compiler-trust option.
+Closing the gap is a multi-lever proof campaign, each lever non-trivial:
+- **`findItemsMap` index** (highest leverage, ~900s): needs an O(log) items-by-core
+  lookup. Unlike `goto_enum` (which reused the same `gotoBT`), this needs a *second*
+  structure (items grouped by core vs by state), so soundness needs either a one-shot
+  O(N) consistency validator the cert discharges, or a representation restructure —
+  the hardest proof of the campaign.
+- Then ~550s of safety remains (`isPrefixPred`/`isStateValidAfterPop` state-set
+  `Allb A.State` → state-sets-as-sorted-lists; lookahead-array → BTree).
+
+Resume only if a kernel-only trust story is required for L0. Benchmark harnesses
+live in `tmp/l0/`, `tmp/lever2/`, `tmp/bench/` (gitignored).
+
 ## 2026-06-25 — Scaling the typed dispatcher to BNFC-sized grammars
 
 Driven by the BNFC backend's `LEANMENHIR-SCALING-HANDOFF.md`: the generated typed
