@@ -138,7 +138,7 @@ theorem step_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffer : 
     · -- Default reduce
       rename_i prod haction
       have Hv : validForReduce (stateOfStack init stk) prod := by
-        have h := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at h; exact h
+        have h := hsafe.reduceOk (stateOfStack init stk); rw [haction] at h; exact h
       have heq2 : reduceStep init stk prod buffer Hv Hi = .Accept sem bn := heqa
       have hr := reduceStep_sound init stk prod Hv Hi word buffer hword
       rw [heq2] at hr
@@ -150,7 +150,7 @@ theorem step_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffer : 
       · simp at heqa
       · rename_i prod hawt
         have Hv : validForReduce (stateOfStack init stk) prod := by
-          have h := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at h
+          have h := hsafe.reduceOk (stateOfStack init stk); rw [haction] at h
           have h2 := h (A.token_term buffer.head); rw [hawt] at h2; exact h2
         have heq2 : reduceStep init stk prod buffer Hv Hi = .Accept sem bn := heqa
         have hr := reduceStep_sound init stk prod Hv Hi word buffer hword
@@ -164,7 +164,7 @@ theorem step_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffer : 
     · -- Default reduce
       rename_i prod haction
       have Hv : validForReduce (stateOfStack init stk) prod := by
-        have h := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at h; exact h
+        have h := hsafe.reduceOk (stateOfStack init stk); rw [haction] at h; exact h
       have heq2 : reduceStep init stk prod buffer Hv Hi = .Progress stk' bn := heqp
       have hr := reduceStep_sound init stk prod Hv Hi word buffer hword
       rw [heq2] at hr
@@ -185,7 +185,7 @@ theorem step_sound (hsafe : safe) (stk : Stack) (word : List A.Token) (buffer : 
           exact key
       · rename_i prod hawt
         have Hv : validForReduce (stateOfStack init stk) prod := by
-          have h := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at h
+          have h := hsafe.reduceOk (stateOfStack init stk); rw [haction] at h
           have h2 := h (A.token_term buffer.head); rw [hawt] at h2; exact h2
         have heq2 : reduceStep init stk prod buffer Hv Hi = .Progress stk' bn := heqp
         have hr := reduceStep_sound init stk prod Hv Hi word buffer hword

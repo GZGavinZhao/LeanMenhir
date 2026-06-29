@@ -204,15 +204,15 @@ def reduceOk : Prop :=
         | _ => True
     | .Default_reduce_act p => validForReduce s p
 
-/-- The automaton is safe (Coq `safe`). -/
-def safe : Prop :=
-  shiftHeadSymbs ∧ gotoHeadSymbs ∧ shiftPastState ∧ gotoPastState ∧ reduceOk
-
-theorem shiftHeadSymbs_of_safe (h : safe) : shiftHeadSymbs := h.1
-theorem gotoHeadSymbs_of_safe (h : safe) : gotoHeadSymbs := h.2.1
-theorem shiftPastState_of_safe (h : safe) : shiftPastState := h.2.2.1
-theorem gotoPastState_of_safe (h : safe) : gotoPastState := h.2.2.2.1
-theorem reduceOk_of_safe (h : safe) : reduceOk := h.2.2.2.2
+/-- The automaton is safe (Coq `safe`): the conjunction of the five safety
+invariants, bundled as a structure so each invariant is reached by name
+(`hsafe.reduceOk`) rather than a positional projection (`h.2.2.2.2`). -/
+structure safe : Prop where
+  shiftHeadSymbs : shiftHeadSymbs
+  gotoHeadSymbs : gotoHeadSymbs
+  shiftPastState : shiftPastState
+  gotoPastState : gotoPastState
+  reduceOk : reduceOk
 
 /-! ### The boolean validator -/
 

@@ -33,7 +33,7 @@ theorem nullable_correct (hc : complete) :
   | _, _, hw, .Terminal_pt _ => by simp at hw
   | _, _, hw, .Non_terminal_pt prod ptl => by
     have hnull := nullable_correct_list hc hw ptl
-    have hs := nullableStable_of_complete hc prod
+    have hs := hc.nullableStable prod
     rw [if_pos hnull] at hs
     exact hs
 theorem nullable_correct_list (hc : complete) :
@@ -76,7 +76,7 @@ theorem first_correct (hc : complete) :
   | _, _, _, .Terminal_pt _ => by simp [firstSymbSet]
   | _, _, _, .Non_terminal_pt prod ptl => by
     simp only [firstSymbSet]
-    exact firstStable_of_complete hc prod _ (first_correct_list hc rfl ptl)
+    exact hc.firstStable prod _ (first_correct_list hc rfl ptl)
 theorem first_correct_list (hc : complete) :
     {heads : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
     {t : A.Token} → {q : List A.Token} →
@@ -594,11 +594,11 @@ theorem stateHasFuture_of_ptzStackCompat (hc : complete) {nt : A.Nonterminal}
   | Top_ptz =>
     simp only [ptzStackCompat] at Hstk
     subst Hstk
-    exact startFuture_of_complete hc init prod hprod _
+    exact hc.startFuture init prod hprod _
   | Cons_ptl_ptz ptl0 ptlz0 =>
     simp only [ptzStackCompat] at Hstk
     obtain ⟨stk0, Hf, _, _⟩ := Hstk
-    have hclosed := nonTerminalClosed_of_complete hc _ _ _ _ Hf
+    have hclosed := hc.nonTerminalClosed _ _ _ _ Hf
     have hp := hclosed prod hprod
     obtain ⟨hnull, hfirst⟩ := hp
     simp only [ptzBuffer]
@@ -932,7 +932,7 @@ theorem reduceStep_next_ptdAux (hc : complete) {nt : A.Nonterminal} {word : List
     have hgoto : A.goto_table (stateOfStack init []) (A.prod_lhs prod) = none := by
       show A.goto_table (.Init init) (A.prod_lhs prod) = none
       rw [hnt]
-      have hsg := startGoto_of_complete hc init
+      have hsg := hc.startGoto init
       cases hg2 : A.goto_table (.Init init) (A.start_nt init) with
       | none => rfl
       | some v => rw [hg2] at hsg; exact hsg.elim
@@ -946,7 +946,7 @@ theorem reduceStep_next_ptdAux (hc : complete) {nt : A.Nonterminal} {word : List
     subst hpt
     simp only [ptzStackCompat] at Hstk0
     obtain ⟨stk0', Hfut, Hstk', Hstk0'⟩ := Hstk0
-    have Hgoto := nonTerminalGoto_of_complete hc (stateOfStack init stk0)
+    have Hgoto := hc.nonTerminalGoto (stateOfStack init stk0)
       (ptlzProd init full_word ptlz) (Symbol.NT (A.prod_lhs prod) :: ptlzFuture init full_word ptlz)
       (ptlzLookahead init full_word buffer_end ptlz) Hfut
     dsimp only at Hgoto
@@ -1071,14 +1071,14 @@ theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word
     have hsf : stateHasFuture (stateOfStack init stk) prod []
         (A.token_term (ptzBuffer init full_word buffer_end ptz).head) := by
       obtain ⟨stk0, h, _, _⟩ := Hstk; exact h
-    have Hred := endReduce_of_complete hc (stateOfStack init stk) prod []
+    have Hred := hc.endReduce (stateOfStack init stk) prod []
       (A.token_term (ptzBuffer init full_word buffer_end ptz).head) hsf
     dsimp only at Hred
     cases haction : A.action_table (stateOfStack init stk) with
     | Default_reduce_act p =>
       simp only [haction] at Hred
       subst p
-      have hro := reduceOk_of_safe hsafe (stateOfStack init stk)
+      have hro := hsafe.reduceOk (stateOfStack init stk)
       rw [haction] at hro
       rw [step_eq_reduceStep_default init hsafe stk (ptzBuffer init full_word buffer_end ptz) Hi
         prod hro haction]
@@ -1090,7 +1090,7 @@ theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word
       | Reduce_act p =>
         simp only [hawt] at Hred
         subst p
-        have hro := reduceOk_of_safe hsafe (stateOfStack init stk)
+        have hro := hsafe.reduceOk (stateOfStack init stk)
         rw [haction] at hro
         have hro' := hro (A.token_term (ptzBuffer init full_word buffer_end ptz).head)
         rw [hawt] at hro'
@@ -1105,7 +1105,7 @@ theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word
     rw [hbuf]
     simp only [ptdStackCompat] at Hstk
     obtain ⟨stk0, Hfut, Hstk', Hstk0⟩ := Hstk
-    have Hact := terminalShift_of_complete hc (stateOfStack init stk) (ptlzProd init full_word ptlz)
+    have Hact := hc.terminalShift (stateOfStack init stk) (ptlzProd init full_word ptlz)
       (Symbol.T (A.token_term tok) :: ptlzFuture init full_word ptlz)
       (ptlzLookahead init full_word buffer_end ptlz) Hfut
     dsimp only at Hact

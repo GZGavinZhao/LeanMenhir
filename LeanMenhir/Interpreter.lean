@@ -256,8 +256,8 @@ theorem reduceStep_stack_invariant_preserved (hsafe : safe) (stk : Stack) (prod 
       (A.prod_action prod)).1
     injection heq with hstk _
     subst hstk
-    have Hgoto1 := gotoHeadSymbs_of_safe hsafe (stateOfStack init stk0) (A.prod_lhs prod)
-    have Hgoto2 := gotoPastState_of_safe hsafe (stateOfStack init stk0) (A.prod_lhs prod)
+    have Hgoto1 := hsafe.gotoHeadSymbs (stateOfStack init stk0) (A.prod_lhs prod)
+    have Hgoto2 := hsafe.gotoPastState (stateOfStack init stk0) (A.prod_lhs prod)
     rw [hgoto] at Hgoto1 Hgoto2
     refine StackInvariant.mk _ ?_ ?_ (StackInvariantNext.cons sn _ stk0 Hi')
     · exact Prefix.cons _ (Prefix.trans Hgoto1 (Hi'.symb_prefix init))
@@ -275,7 +275,7 @@ def step (hsafe : safe) (stk : Stack) (buffer : Buffer) (Hi : StackInvariant ini
   match haction : A.action_table (stateOfStack init stk) with
   | .Default_reduce_act prod =>
       have Hv : validForReduce (stateOfStack init stk) prod := by
-        have := (reduceOk_of_safe hsafe) (stateOfStack init stk)
+        have := hsafe.reduceOk (stateOfStack init stk)
         rw [haction] at this; exact this
       reduceStep init stk prod buffer Hv Hi
   | .Lookahead_act awt =>
@@ -287,7 +287,7 @@ def step (hsafe : safe) (stk : Stack) (buffer : Buffer) (Hi : StackInvariant ini
           .Progress (⟨stateNew, semConv⟩ :: stk) buffer.tail
       | .Reduce_act prod =>
           have Hv : validForReduce (stateOfStack init stk) prod := by
-            have := (reduceOk_of_safe hsafe) (stateOfStack init stk)
+            have := hsafe.reduceOk (stateOfStack init stk)
             rw [haction] at this
             have := this (A.token_term tok)
             rw [hawt] at this; exact this
@@ -311,8 +311,8 @@ theorem step_stack_invariant_preserved (hsafe : safe) (stk : Stack) (buffer : Bu
       rename_i sn e hawt
       injection heq with hstk _
       subst hstk
-      have Hshift1 := shiftHeadSymbs_of_safe hsafe (stateOfStack init stk)
-      have Hshift2 := shiftPastState_of_safe hsafe (stateOfStack init stk)
+      have Hshift1 := hsafe.shiftHeadSymbs (stateOfStack init stk)
+      have Hshift2 := hsafe.shiftPastState (stateOfStack init stk)
       rw [hact] at Hshift1 Hshift2
       have H1 := Hshift1 (A.token_term buffer.head)
       have H2 := Hshift2 (A.token_term buffer.head)

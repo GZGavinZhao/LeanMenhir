@@ -161,19 +161,18 @@ def nonTerminalClosed : Prop :=
           lookahead2 ∈ firstWordSet q → stateHasFuture s1 p (futureOfProd p 0) lookahead2)
     | _ => True
 
-/-- The automaton is complete (Coq `complete`). -/
-def complete : Prop :=
-  nullableStable ∧ firstStable ∧ startFuture ∧ terminalShift
-  ∧ endReduce ∧ nonTerminalGoto ∧ startGoto ∧ nonTerminalClosed
-
-theorem nullableStable_of_complete (h : complete) : nullableStable := h.1
-theorem firstStable_of_complete (h : complete) : firstStable := h.2.1
-theorem startFuture_of_complete (h : complete) : startFuture := h.2.2.1
-theorem terminalShift_of_complete (h : complete) : terminalShift := h.2.2.2.1
-theorem endReduce_of_complete (h : complete) : endReduce := h.2.2.2.2.1
-theorem nonTerminalGoto_of_complete (h : complete) : nonTerminalGoto := h.2.2.2.2.2.1
-theorem startGoto_of_complete (h : complete) : startGoto := h.2.2.2.2.2.2.1
-theorem nonTerminalClosed_of_complete (h : complete) : nonTerminalClosed := h.2.2.2.2.2.2.2
+/-- The automaton is complete (Coq `complete`): the conjunction of the eight
+completeness invariants, bundled as a structure so each invariant is reached by
+name (`hc.endReduce`) rather than a positional projection (`h.2.2.2.2.1`). -/
+structure complete : Prop where
+  nullableStable : nullableStable
+  firstStable : firstStable
+  startFuture : startFuture
+  terminalShift : terminalShift
+  endReduce : endReduce
+  nonTerminalGoto : nonTerminalGoto
+  startGoto : startGoto
+  nonTerminalClosed : nonTerminalClosed
 
 /-! ### Helper lemmas -/
 
