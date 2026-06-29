@@ -18,12 +18,17 @@ verify the (large, fiddly) LR table-construction algorithm.
   `Enumerable` / `Alphabet` typeclasses.
 * `LeanMenhir/Grammar.lean` — symbols, the `Grammar` interface, and the
   dependently-typed `ParseTree` semantics.
-* `LeanMenhir/Automaton.lean` — the LR automaton table interface.
-* `LeanMenhir/Validator/Safe.lean` — the safety validator `isSafe` and
-  `safe_is_validator : isSafe () = true → safe`.
+* `LeanMenhir/Automaton.lean` — the LR automaton table interface (`Automaton
+  extends Grammar`, so it bundles the grammar it parses).
+* `LeanMenhir/Validator/Safe.lean` — the safety validator `isSafe` with
+  `safe_is_validator : isSafe = true → safe`, its converse, and
+  `isSafe_iff_safe`/`instance : Decidable safe` (so a concrete automaton
+  discharges `safe` with `by decide`/`by native_decide`).
 * `LeanMenhir/Validator/Complete.lean` — the completeness validator `isComplete`
-  and `complete_is_validator : isComplete () = true → complete` (the eight LR(1)
-  item-closure invariants).
+  and `complete_is_validator : isComplete = true → complete` (the eight LR(1)
+  item-closure invariants). This validator is **sound-only** (the proposition
+  `complete` is strictly weaker than `isComplete = true`, so — unlike `safe` —
+  `complete` is not `Decidable`; discharge it via `complete_is_validator`).
 * `LeanMenhir/Interpreter.lean` — `pop` / `reduceStep` / `step` / `parse`
   (fuel-based), with all stack-invariant lemmas. **No `sorry`.**
 * `LeanMenhir/Interpreter/Correct.lean` — the soundness proof (`parse_correct`).
@@ -47,7 +52,8 @@ verify the (large, fiddly) LR table-construction algorithm.
   (precedence, parens, lexer, AST printer); SLR(1) generated automaton (18 states,
   vs 33 for canonical LR(1)) whose
   safety *and* completeness certificates are discharged by **kernel `decide`**
-  (axioms `{propext, Quot.sound}` — *no* compiler-trust axiom), with the
+  (axioms `{propext, Classical.choice, Quot.sound}` — crucially *no*
+  compiler-trust axiom, i.e. no `Lean.ofReduceBool`), with the
   instantiated `mini_parses` / `mini_unambiguous`. Parses `12 + 34*x / (48+y)`
   to the expected AST, verified at build time.
 

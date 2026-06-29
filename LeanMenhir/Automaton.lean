@@ -108,7 +108,21 @@ structure Item (Terminal Production : Type) where
 /-! ### The automaton interface -/
 
 /-- The automaton interface, mirroring Coq `Automaton.T` (which bundles `AutInit`,
-`Types`, and the table/annotation parameters). Extends `Grammar`. -/
+`Types`, and the table/annotation parameters).
+
+It `extends Grammar`, so an `Automaton` instance **is a grammar together with a
+set of LR tables that purport to parse it** (this mirrors Coq's
+`Module Type AutInit` doing `Export Gram`). The grammar component is reachable as
+`A.toGrammar`, and the inherited fields (`Terminal`, `Nonterminal`, `Production`,
+`Token`, `prod_lhs`, `prod_action`, …) are exactly the grammar's.
+
+This is why the soundness/completeness theorems in `Main` are stated over an
+`[A : Automaton]` yet talk about `ParseTree`, `ptSem`, `A.Token`, and
+`A.start_nt`: those are all *grammar* notions inherited through `extends`. The
+guarantees are genuinely about the grammar — the automaton merely supplies the
+(validator-checked) tables used to realise them. (If you want the grammar to
+appear as an explicit `G` in every signature, the alternative design is to index
+the class as `Automaton (G : Grammar)`; that is a deeper, generator-wide change.) -/
 class Automaton extends Grammar where
   NonInitState : Type
   noninitstateAlphabet : Alphabet NonInitState
