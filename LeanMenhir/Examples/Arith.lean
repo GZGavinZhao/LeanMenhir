@@ -46,11 +46,25 @@ def actions : Nat → List Nat → Nat
   | 2, l => l.getD 0 0                 -- E → num     ↦ num
   | _, _ => 0
 
-/-- The grammar the generated tables describe (now an explicit index of the
-automaton, so the correctness theorems below visibly concern it). -/
+/-! A generated parser is **two** instances, because two distinct typeclasses are
+involved — and they deliberately do *not* collapse into one:
+
+* `Grammar` is the language itself; the parse-tree *semantics* the correctness
+  theorems are about (`ParseTree`, `ptSem`, `ptSize`) are defined relative to it.
+* `Automaton G` is the LR *tables* that parse the grammar `G`.
+
+So we declare the grammar, then the automaton *for that grammar*. The `Grammar`
+instance can't be recovered from the `Automaton` one automatically: instance
+search can't run `Automaton ?G → Grammar` with `?G` unknown (that would need `G`
+to be an `outParam`, which would re-hide it from the theorem signatures), and the
+verified API carries a leading `[G : Grammar]` (its own `ParseTree`/`ptSem` need
+it), synthesized before `A` could pin `G`. This pair is the minimal honest form. -/
+
+/-- The grammar the generated tables describe — the explicit index of `automaton`,
+so the correctness theorems below visibly concern it. -/
 instance gram : Grammar := grammarOfTables tables Nat actions
 
-/-- The verified automaton built from the generated tables. -/
+/-- The verified LR automaton for `gram`, built from the generated tables. -/
 instance automaton : Automaton gram := automatonOfTables tables Nat actions
 
 /-- The safety validator accepts the generated tables — checked by computation. -/
