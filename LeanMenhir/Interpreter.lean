@@ -17,7 +17,7 @@ import LeanMenhir.Buf
 
 namespace LeanMenhir
 
-variable [A : Automaton]
+variable [G : Grammar] [A : Automaton G]
 
 /-! ### Input buffers -/
 

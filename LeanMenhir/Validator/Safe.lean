@@ -84,7 +84,7 @@ theorem PrefixPred.inv_cons {st : Type} {f1 f2 : st → Bool} {l1 l2 : List (st 
   cases h with
   | cons _ _ himpl h' => exact ⟨himpl, h'⟩
 
-variable [A : Automaton]
+variable [G : Grammar] [A : Automaton G]
 
 /-! ### State annotations -/
 
@@ -390,7 +390,7 @@ we also prove the converse `… → is… = true` and bundle both into an iff. T
 `Decidable safe` instance routes evaluation through the existing (sparse,
 performance-tuned) `isSafe`, so kernel/native `decide` cost is unchanged. -/
 
-omit A in
+omit G A in
 theorem isPrefix_complete {σ : Type} [Comparable σ] [ComparableLeibnizEq σ] :
     ∀ {l1 l2 : List σ}, Prefix l1 l2 → isPrefix l1 l2 = true
   | _, _, .nil _ => rfl

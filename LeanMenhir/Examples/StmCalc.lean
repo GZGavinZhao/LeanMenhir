@@ -101,7 +101,8 @@ def actions : (p : Fin (stmTables.numProd + 1)) →
 
 /-- The verified automaton built from the generated tables via the heterogeneous
 bridge. -/
-instance automaton : Automaton := automatonOfTablesTyped stmTables ntType termType Unit actions
+instance gram : Grammar := grammarOfTablesTyped stmTables ntType termType Unit actions
+instance automaton : Automaton gram := automatonOfTablesTyped stmTables ntType termType Unit actions
 
 /-- Safety — kernel `decide` (BTree-backed tables; no compiler-trust axiom). -/
 theorem stmSafe : safe (A := automaton) := by decide

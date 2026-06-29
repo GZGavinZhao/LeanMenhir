@@ -103,8 +103,11 @@ def actions : (p : Fin (tables.numProd + 1)) →
   | 21 => ()
   | ⟨_ + 22, h⟩ => elimOutOfRange h
 
+/-- The grammar the generated tables describe (the explicit index of `automaton`). -/
+instance gram : Grammar := grammarOfTablesTyped tables ntType termType Unit actions
+
 /-- The verified automaton built from the generated tables. -/
-instance automaton : Automaton := automatonOfTablesTyped tables ntType termType Unit actions
+instance automaton : Automaton gram := automatonOfTablesTyped tables ntType termType Unit actions
 
 /-- Safety — kernel `decide` (BTree-backed tables: `O(log)` lookups in the
 validator, with no compiler-trust axiom). -/

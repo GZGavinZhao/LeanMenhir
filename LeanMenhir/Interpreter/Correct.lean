@@ -14,7 +14,7 @@ namespace LeanMenhir
 
 open LeanMenhir.Buf
 
-variable [A : Automaton] (init : A.InitState)
+variable [G : Grammar] [A : Automaton G] (init : A.InitState)
 
 /-- `WordHasStackSemantics word stk` : `word` is a concatenation of words whose
 semantic values are exactly those stored on the stack (Coq

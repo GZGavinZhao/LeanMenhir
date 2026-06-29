@@ -46,8 +46,12 @@ def actions : Nat → List Nat → Nat
   | 2, l => l.getD 0 0                 -- E → num     ↦ num
   | _, _ => 0
 
+/-- The grammar the generated tables describe (now an explicit index of the
+automaton, so the correctness theorems below visibly concern it). -/
+instance gram : Grammar := grammarOfTables tables Nat actions
+
 /-- The verified automaton built from the generated tables. -/
-instance automaton : Automaton := automatonOfTables tables Nat actions
+instance automaton : Automaton gram := automatonOfTables tables Nat actions
 
 /-- The safety validator accepts the generated tables — checked by computation. -/
 theorem isSafe_ok : safe (A := automaton) := by native_decide

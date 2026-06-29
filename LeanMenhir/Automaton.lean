@@ -107,66 +107,92 @@ structure Item (Terminal Production : Type) where
 
 /-! ### The automaton interface -/
 
-/-- The automaton interface, mirroring Coq `Automaton.T` (which bundles `AutInit`,
-`Types`, and the table/annotation parameters).
+/-- The automaton interface, mirroring Coq `Automaton.T`.
 
-It `extends Grammar`, so an `Automaton` instance **is a grammar together with a
-set of LR tables that purport to parse it** (this mirrors Coq's
-`Module Type AutInit` doing `Export Gram`). The grammar component is reachable as
-`A.toGrammar`, and the inherited fields (`Terminal`, `Nonterminal`, `Production`,
-`Token`, `prod_lhs`, `prod_action`, …) are exactly the grammar's.
+It is **indexed by the grammar `G` it parses**: an `Automaton G` is a set of LR
+tables *typed for* `G`. The grammar is genuinely referenced — `G.Terminal`,
+`G.Nonterminal`, `G.Production`, `G.Symbol` appear in the types of `action_table`
+/ `goto_table` / `items_of_state`, and the stack stores `G.symbol_semantic_type`
+values — but it is **not bundled** as a sub-object. Consequently the
+soundness/completeness theorems in `Main` read `[A : Automaton G]` and visibly
+concern `G`, while the table-only validators (`safe`/`isSafe`) keep a
+grammar-free conclusion.
 
-This is why the soundness/completeness theorems in `Main` are stated over an
-`[A : Automaton]` yet talk about `ParseTree`, `ptSem`, `A.Token`, and
-`A.start_nt`: those are all *grammar* notions inherited through `extends`. The
-guarantees are genuinely about the grammar — the automaton merely supplies the
-(validator-checked) tables used to realise them. (If you want the grammar to
-appear as an explicit `G` in every signature, the alternative design is to index
-the class as `Automaton (G : Grammar)`; that is a deeper, generator-wide change.) -/
-class Automaton extends Grammar where
+(Coq's `Automaton.T` instead `Declare`s + `Export`s its grammar module `Gram`;
+indexing by `G` is the Lean-idiomatic analogue — a reference, not a bundled copy.
+The *untyped* index tables produced by the generator, `Generator.GenTables`, are
+the genuinely grammar-agnostic state machine; `automatonOfTables` reinterprets
+them over a chosen `G` to obtain this typed interface.)
+
+Grammar accessors are re-exported as reducible abbreviations
+(`A.Terminal := G.Terminal`, `A.prod_lhs := G.prod_lhs`, …) just below, so the
+interpreter and proofs can keep writing `A.Terminal`, `A.Token`, `A.prod_action`,
+etc. -/
+class Automaton (G : Grammar) where
   NonInitState : Type
   noninitstateAlphabet : Alphabet NonInitState
   InitState : Type
   initstateAlphabet : Alphabet InitState
   /-- When in this state, this symbol is known to be on top of the stack. -/
-  last_symb_of_non_init_state : NonInitState → Symbol Terminal Nonterminal
+  last_symb_of_non_init_state : NonInitState → Symbol G.Terminal G.Nonterminal
   /-- For each initial state, the nonterminal it recognises. -/
-  start_nt : InitState → Nonterminal
+  start_nt : InitState → G.Nonterminal
   /-- The action table. -/
   action_table : State InitState NonInitState →
-    Action last_symb_of_non_init_state Production
+    Action last_symb_of_non_init_state G.Production
   /-- The goto table. -/
-  goto_table : State InitState NonInitState → (nt : Nonterminal) →
+  goto_table : State InitState NonInitState → (nt : G.Nonterminal) →
     Option { s : NonInitState // Symbol.NT nt = last_symb_of_non_init_state s }
   /-- Symbols known to be just below the top of the stack in this state. -/
-  past_symb_of_non_init_state : NonInitState → List (Symbol Terminal Nonterminal)
+  past_symb_of_non_init_state : NonInitState → List (Symbol G.Terminal G.Nonterminal)
   /-- Predicates the strictly-previous states satisfy in this state. -/
   past_state_of_non_init_state : NonInitState → List (State InitState NonInitState → Bool)
   /-- The items of a state. -/
-  items_of_state : State InitState NonInitState → List (Item Terminal Production)
+  items_of_state : State InitState NonInitState → List (Item G.Terminal G.Production)
   /-- True iff the nonterminal can produce the empty string. -/
-  nullable_nterm : Nonterminal → Bool
+  nullable_nterm : G.Nonterminal → Bool
   /-- Terminals that can begin a word produced by the nonterminal. -/
-  first_nterm : Nonterminal → List Terminal
+  first_nterm : G.Nonterminal → List G.Terminal
   /-- An over-approximation of the automaton's defined gotos: it must contain every
   `(s, nt)` for which `goto_table s nt` is defined (see `goto_enum_complete`). The
   goto-based safety validators iterate this list — the *defined* gotos, which are
   sparse — instead of probing every `(state, nonterminal)` pair (the dominant
   kernel-`rfl` cost). Table bridges supply the sparse list from `gotoBT.toList`;
   small/array bridges may supply the dense enumeration of all pairs. -/
-  goto_enum : List (State InitState NonInitState × Nonterminal)
+  goto_enum : List (State InitState NonInitState × G.Nonterminal)
   /-- `goto_enum` covers every defined goto. This is what makes iterating
   `goto_enum` sound: a `(s, nt)` whose goto is defined cannot be skipped. -/
-  goto_enum_complete : ∀ (s : State InitState NonInitState) (nt : Nonterminal),
+  goto_enum_complete : ∀ (s : State InitState NonInitState) (nt : G.Nonterminal),
     goto_table s nt ≠ none → (s, nt) ∈ goto_enum
 
-instance instNonInitStateAlphabet [A : Automaton] : Alphabet A.NonInitState :=
+namespace Automaton
+
+/-! ### Grammar accessors, delegated to the indexing grammar `G`
+
+These reducible abbreviations let the interpreter and all proofs keep using
+`A.Terminal`, `A.Token`, `A.prod_lhs`, … even though the grammar is now an index
+rather than a bundled parent. Each is definitionally the corresponding `G` field. -/
+
+@[reducible] def Terminal {G : Grammar} (_A : Automaton G) : Type := G.Terminal
+@[reducible] def Nonterminal {G : Grammar} (_A : Automaton G) : Type := G.Nonterminal
+@[reducible] def Production {G : Grammar} (_A : Automaton G) : Type := G.Production
+@[reducible] def Token {G : Grammar} (_A : Automaton G) : Type := G.Token
+@[reducible] def symbol_semantic_type {G : Grammar} (_A : Automaton G) := G.symbol_semantic_type
+@[reducible] def prod_lhs {G : Grammar} (_A : Automaton G) := G.prod_lhs
+@[reducible] def prod_rhs_rev {G : Grammar} (_A : Automaton G) := G.prod_rhs_rev
+@[reducible] def prod_action {G : Grammar} (_A : Automaton G) := G.prod_action
+@[reducible] def token_term {G : Grammar} (_A : Automaton G) := G.token_term
+@[reducible] def token_sem {G : Grammar} (_A : Automaton G) := G.token_sem
+
+end Automaton
+
+instance instNonInitStateAlphabet {G : Grammar} [A : Automaton G] : Alphabet A.NonInitState :=
   A.noninitstateAlphabet
-instance instInitStateAlphabet [A : Automaton] : Alphabet A.InitState :=
+instance instInitStateAlphabet {G : Grammar} [A : Automaton G] : Alphabet A.InitState :=
   A.initstateAlphabet
 
 namespace Automaton
-variable (A : Automaton)
+variable {G : Grammar} (A : Automaton G)
 
 /-- The state type of the automaton. -/
 abbrev State : Type := LeanMenhir.State A.InitState A.NonInitState

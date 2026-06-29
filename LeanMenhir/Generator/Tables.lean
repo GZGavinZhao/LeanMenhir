@@ -246,10 +246,11 @@ theorem mem_allPairs {S NT : Type} [Enumerable S] [Enumerable NT] (s : S) (nt : 
 
 variable (Val : Type) (actions : Nat → List Val → Val)
 
-/-- Build a genuine `Automaton` from the (untrusted) index-only tables `g`, with
-monomorphic semantic values `Val` and per-production actions `actions`. -/
+/-- The grammar underlying `automatonOfTables`: monomorphic semantic values `Val`
+and per-production actions `actions`, over `Fin`-indexed terminals/nonterminals/
+productions read off the (untrusted) index tables `g`. -/
 @[reducible]
-def automatonOfTables : Automaton where
+def grammarOfTables : Grammar where
   Terminal := Fin (g.numTerm + 1)
   Nonterminal := Fin (g.numNonterm + 1)
   terminalAlphabet := inferInstance
@@ -270,6 +271,13 @@ def automatonOfTables : Automaton where
   Token := Fin (g.numTerm + 1) × Val
   token_term := fun t => t.1
   token_sem := fun t => t.2
+
+/-- Build a genuine `Automaton` for `grammarOfTables g Val actions` from the
+(untrusted) index-only tables `g`. The grammar it parses is now an explicit index
+(see `grammarOfTables`), so a parser correctness proof against this automaton
+visibly concerns that grammar. -/
+@[reducible]
+def automatonOfTables : Automaton (grammarOfTables g Val actions) where
   NonInitState := Fin (g.numNonInit + 1)
   noninitstateAlphabet := inferInstance
   InitState := Fin 1
@@ -309,14 +317,9 @@ def automatonOfTables : Automaton where
   goto_enum := allPairs
   goto_enum_complete := fun s nt _ => mem_allPairs s nt
 
-/-- BTree-backed monomorphic bridge: identical to `automatonOfTables` but every
-state/nonterminal-indexed lookup goes through `BTree.find` on the `…BT` fields, so
-the `isSafe`/`isComplete` validators reduce in `O(log n)` per lookup under the
-kernel — discharge their certificates with `by rfl` (not `decide`, which refuses
-`BTree.find`'s recursion). Requires `g` from `build_tables%` (which populates the
-trees). Used as the kernel-`rfl` measurement / certificate path. -/
+/-- The grammar underlying `automatonOfTablesBT` (BTree-backed, monomorphic). -/
 @[reducible]
-def automatonOfTablesBT : Automaton where
+def grammarOfTablesBT : Grammar where
   Terminal := Fin (g.numTerm + 1)
   Nonterminal := Fin (g.numNonterm + 1)
   terminalAlphabet := inferInstance
@@ -333,6 +336,15 @@ def automatonOfTablesBT : Automaton where
   Token := Fin (g.numTerm + 1) × Val
   token_term := fun t => t.1
   token_sem := fun t => t.2
+
+/-- BTree-backed monomorphic bridge: identical to `automatonOfTables` but every
+state/nonterminal-indexed lookup goes through `BTree.find` on the `…BT` fields, so
+the `isSafe`/`isComplete` validators reduce in `O(log n)` per lookup under the
+kernel — discharge their certificates with `by rfl` (not `decide`, which refuses
+`BTree.find`'s recursion). Requires `g` from `build_tables%` (which populates the
+trees). Used as the kernel-`rfl` measurement / certificate path. -/
+@[reducible]
+def automatonOfTablesBT : Automaton (grammarOfTablesBT g Val actions) where
   NonInitState := Fin (g.numNonInit + 1)
   noninitstateAlphabet := inferInstance
   InitState := Fin 1
@@ -434,19 +446,17 @@ arm type-checks without the equation compiler needing to reason about the bound.
 def elimOutOfRange {α : Sort u} {m K : Nat} (h : m + K < K) : α :=
   absurd h (by omega)
 
-/-- Build an `Automaton` from the (untrusted) index-only tables `g` with
-*heterogeneous* semantic values: terminal `t` carries a `termType t`, nonterminal
-`n` carries an `ntType n`, and the token is the dependent pair `Σ t, termType t`.
-Each production's `actions p` is its semantic action in its true curried type.
-See the section comment above. -/
+/-- The grammar underlying `automatonOfTablesTyped`: *heterogeneous* semantic
+values (terminal `t` carries `termType t`, nonterminal `n` carries `ntType n`,
+token is `Info × Σ t, termType t`). See the section comment above. -/
 @[reducible]
-def automatonOfTablesTyped (g : GenTables)
+def grammarOfTablesTyped (g : GenTables)
     (ntType : Fin (g.numNonterm + 1) → Type) (termType : Fin (g.numTerm + 1) → Type)
     (Info : Type)
     (actions : (p : Fin (g.numProd + 1)) →
       arrowsRight (symTypeOf g ntType termType (.NT (prodLhsOf g p)))
                   ((prodRhsRevOf g p).map (symTypeOf g ntType termType))) :
-    Automaton where
+    Grammar where
   Terminal := Fin (g.numTerm + 1)
   Nonterminal := Fin (g.numNonterm + 1)
   terminalAlphabet := inferInstance
@@ -462,6 +472,18 @@ def automatonOfTablesTyped (g : GenTables)
   Token := Info × ((t : Fin (g.numTerm + 1)) × termType t)
   token_term := fun x => x.2.1
   token_sem := fun x => x.2.2
+
+/-- Build an `Automaton` for `grammarOfTablesTyped …` from the (untrusted)
+index-only tables `g` with *heterogeneous* semantic values. The grammar it parses
+is the explicit index `grammarOfTablesTyped g ntType termType Info actions`. -/
+@[reducible]
+def automatonOfTablesTyped (g : GenTables)
+    (ntType : Fin (g.numNonterm + 1) → Type) (termType : Fin (g.numTerm + 1) → Type)
+    (Info : Type)
+    (actions : (p : Fin (g.numProd + 1)) →
+      arrowsRight (symTypeOf g ntType termType (.NT (prodLhsOf g p)))
+                  ((prodRhsRevOf g p).map (symTypeOf g ntType termType))) :
+    Automaton (grammarOfTablesTyped g ntType termType Info actions) where
   NonInitState := Fin (g.numNonInit + 1)
   noninitstateAlphabet := inferInstance
   InitState := Fin 1

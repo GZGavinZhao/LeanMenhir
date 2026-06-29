@@ -126,8 +126,11 @@ def actions : (p : Fin (tables.numProd + 1)) →
 
 /-! ### 5. Automaton, certificates, and the parse driver -/
 
+/-- The grammar the generated tables describe (the explicit index of `automaton`). -/
+instance gram : Grammar := grammarOfTablesTyped tables ntType termType Position actions
+
 /-- The verified automaton; tokens carry a `Position` for error reporting. -/
-instance automaton : Automaton := automatonOfTablesTyped tables ntType termType Position actions
+instance automaton : Automaton gram := automatonOfTablesTyped tables ntType termType Position actions
 
 /-- Safety — kernel `decide` (BTree-backed tables; no compiler-trust axiom). -/
 theorem calcSafe : safe (A := automaton) := by decide

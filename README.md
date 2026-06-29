@@ -18,8 +18,9 @@ verify the (large, fiddly) LR table-construction algorithm.
   `Enumerable` / `Alphabet` typeclasses.
 * `LeanMenhir/Grammar.lean` — symbols, the `Grammar` interface, and the
   dependently-typed `ParseTree` semantics.
-* `LeanMenhir/Automaton.lean` — the LR automaton table interface (`Automaton
-  extends Grammar`, so it bundles the grammar it parses).
+* `LeanMenhir/Automaton.lean` — the LR automaton table interface, indexed by the
+  grammar it parses (`Automaton (G : Grammar)`); the parser correctness theorems
+  therefore read `[A : Automaton G]` and visibly concern `G`.
 * `LeanMenhir/Validator/Safe.lean` — the safety validator `isSafe` with
   `safe_is_validator : isSafe = true → safe`, its converse, and
   `isSafe_iff_safe`/`instance : Decidable safe` (so a concrete automaton

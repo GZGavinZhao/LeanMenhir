@@ -24,7 +24,7 @@ import LeanMenhir.Validator.Safe
 
 namespace LeanMenhir
 
-variable [A : Automaton]
+variable [G : Grammar] [A : Automaton G]
 
 /-! ### Nullable / first sets (as lists) -/
 

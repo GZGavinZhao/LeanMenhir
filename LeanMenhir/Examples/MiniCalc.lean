@@ -90,8 +90,11 @@ def actions : Nat → List Expr → Expr
   | 9, l => l.getD 1 (.num 0)                                -- p_atom → ( p_expr )
   | _, _ => .num 0
 
+/-- The grammar the generated tables describe (the explicit index of `automaton`). -/
+instance gram : Grammar := grammarOfTables miniTables Expr actions
+
 /-- The verified automaton built from the generated tables. -/
-instance automaton : Automaton := automatonOfTables miniTables Expr actions
+instance automaton : Automaton gram := automatonOfTables miniTables Expr actions
 
 /-- The generated tables are safe — certified by **kernel `decide`** (the only
 trusted component is the Lean kernel; no `native_decide`/compiler-trust axiom). -/

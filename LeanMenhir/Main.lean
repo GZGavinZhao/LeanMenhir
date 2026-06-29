@@ -16,7 +16,7 @@ namespace Main
 
 open LeanMenhir.Buf
 
-variable [A : Automaton]
+variable [G : Grammar] [A : Automaton G]
 
 /-- The runnable parser: given a proof that the automaton is `safe` (discharged by
 `by decide`/`by native_decide` via the `Decidable safe` instance), parse `buffer`

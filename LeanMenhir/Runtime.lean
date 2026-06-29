@@ -21,7 +21,7 @@ namespace LeanMenhir.Runtime
 
 open LeanMenhir
 
-variable {A : Automaton}
+variable {G : Grammar} {A : Automaton G}
 
 /-- A fuel **exponent** generous enough for an input of `n` tokens. `Main.parse`
 runs with a budget of `2 ^ logNSteps` steps and a complete parse takes `O(n)`
@@ -32,7 +32,7 @@ def fuelFor (n : Nat) : Nat := Nat.log2 (n + 1) + 6
 
 /-- The semantic-value type produced by parsing from initial state `init`: the
 value type of the start nonterminal. -/
-abbrev ResultType (A : Automaton) (init : A.InitState) : Type :=
+abbrev ResultType {G : Grammar} (A : Automaton G) (init : A.InitState) : Type :=
   A.symbol_semantic_type (.NT (A.start_nt init))
 
 /-- Run the verified parser on the finite token list `toks`, padding the buffer

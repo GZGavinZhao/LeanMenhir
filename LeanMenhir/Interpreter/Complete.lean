@@ -20,7 +20,7 @@ namespace LeanMenhir
 
 open Buf
 
-variable [A : Automaton]
+variable [G : Grammar] [A : Automaton G]
 
 /-! ### Fixpoint-correctness lemmas for `nullable` and `first` -/
 
