@@ -69,6 +69,10 @@ untrusted generator and spliced in as a concrete literal via the `build_tables%`
 elaborator (strategy C — single-phase build, kernel-`decide`-friendly). -/
 def stmTables : Gen.GenTables := build_tables% grammar
 
+/-- The generated `stmTables` describe exactly `grammar` — kernel `decide`, no
+compiler-trust axiom. -/
+theorem stmTables_faithful : stmTables.describes grammar := by decide
+
 /-! ### Heterogeneous semantic types and actions -/
 
 /-- Per-nonterminal AST type: `Exp`=2 and `Atom`=3 carry `Exp`; `Program`=0 and

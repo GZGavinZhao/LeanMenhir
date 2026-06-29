@@ -82,6 +82,11 @@ def grammar : Grammar0 where
 
 def tables : GenTables := build_tables% grammar
 
+/-- The generated `tables` describe exactly `grammar` (so the parser theorems —
+stated against the grammar the typed bridge reads off `tables` — are about *this*
+`grammar`). Kernel `decide`; no `native_decide`, no compiler-trust axiom. -/
+theorem tables_faithful : tables.describes grammar := by decide
+
 /-! ### 4. AST + heterogeneous semantic types + typed actions -/
 
 inductive Exp

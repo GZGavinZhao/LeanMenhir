@@ -556,6 +556,27 @@ theorem tabulateSLR_faithful :
 
 end Grammar0
 
+/-- `t` faithfully tabulates the grammar `g`: the counts, start symbol, and the
+per-production lhs / reversed-rhs **jump tables** (`prodLhsFn`/`prodRhsRevFn`, which
+the typed/BTree bridge actually reads) agree with `g`. So a `Grammar` built from `t`
+via `automatonOfTablesTyped` is exactly `g`'s grammar.
+
+This is the `build_tables%` analogue of `Grammar0.tabulateSLR_faithful`: there the
+grammar skeleton is pinned at the *source* so faithfulness is free; here `t` is a
+concrete literal spliced by `build_tables%`, so faithfulness is a `Prop` discharged
+per grammar — but by **kernel `decide`** (no `native_decide`, no compiler-trust
+axiom; the comparison is via `List` so `Array.map`/`reverse` never block reduction).
+The generator stays untrusted: a wrong table fails this `decide` (and the
+`safe`/`complete` validators), never silently passes. -/
+def GenTables.describes (t : GenTables) (g : Grammar0) : Prop :=
+  t.numTerm = g.numTerm ∧ t.numNonterm = g.numNonterm ∧
+  t.numProd = g.numProd ∧ t.startNonterm = g.start ∧
+  ∀ i < g.numProd, t.prodLhsFn i = g.lhsOf i ∧
+    (t.prodRhsRevFn i).toList = (g.rhsOf i).toList.reverse
+
+instance (t : GenTables) (g : Grammar0) : Decidable (t.describes g) := by
+  unfold GenTables.describes; infer_instance
+
 /-! ### Emitting concrete tables as Lean source
 
 The generator is `partial`, so its output does not reduce in the kernel. To get

@@ -69,6 +69,11 @@ def grammar : Grammar0 where
 /-- Tables generated at elaboration time (jump-table-backed lookups). -/
 def tables : GenTables := build_tables% grammar
 
+/-- The generated `tables` describe exactly `grammar` — kernel `decide`, no
+compiler trust, even at this scale (the comparison goes through `List`, so the
+`Array` ops never block kernel reduction). -/
+theorem tables_faithful : tables.describes grammar := by decide
+
 def ntType : Fin (tables.numNonterm + 1) → Type
   | 2 => Unit   -- dummy nonterminal
   | _ => Nat    -- Start, Sel both carry the selected index
