@@ -73,34 +73,29 @@ example : parseTokens [(0, 42)] = some 42 := by native_decide
 /-- Ill-formed input (`+ 1`) is rejected. -/
 example : parseTokens [(1, 0), (0, 1)] = none := by native_decide
 
-/-- **Soundness** for the generated Arith parser (a clean corollary of
-`Main.parse_correct`): whenever it returns `Parsed sem _`, `sem` is the semantics
+/-- **Soundness** for the generated Arith parser — a direct instance of
+`Main.parse_correct`: whenever it returns `Parsed sem _`, `sem` is the semantics
 of a real parse tree of the consumed input. -/
 theorem arith_correct (logNSteps : Nat) (buffer : Buffer (A := automaton))
     (sem : automaton.symbol_semantic_type (.NT (automaton.start_nt (0 : Fin 1))))
     (bufNew : Buffer (A := automaton))
     (h : Main.parse (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer = .Parsed sem bufNew) :
     ∃ (word : List automaton.Token) (pt : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word),
-      buffer.get = (word ++ₛ bufNew).get ∧ ptSem pt = sem := by
-  have H := Main.parse_correct (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer
-  rw [h] at H; exact H
+      buffer.get = (word ++ₛ bufNew).get ∧ ptSem pt = sem :=
+  Main.parse_correct (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer h
 
-/-- **Completeness** for the generated Arith parser (a clean corollary of
-`Main.parse_complete` specialised with the safety + completeness certificates):
-*every* parse `tree` of `word`, given enough fuel (`ptSize tree ≤ 2 ^ logNSteps`),
-is parsed to its own semantic value, consuming exactly `word`. -/
+/-- **Completeness** for the generated Arith parser — a direct instance of
+`Main.parse_complete`: *every* parse `tree` of `word`, given enough fuel
+(`ptSize tree ≤ 2 ^ logNSteps`), is parsed to its own semantic value, consuming
+exactly `word`. -/
 theorem arith_parses (logNSteps : Nat) (word : List automaton.Token)
     (bufEnd : Buffer (A := automaton))
     (tree : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word)
     (hfuel : ptSize tree ≤ 2 ^ logNSteps) :
     Main.parse (A := automaton) (0 : Fin 1) isSafe_ok logNSteps (word ++ₛ bufEnd)
-      = .Parsed (ptSem tree) bufEnd := by
-  have H := Main.parse_complete (A := automaton) (0 : Fin 1) isSafe_ok isComplete_ok
-    logNSteps word bufEnd tree
-  cases hp : Main.parse (A := automaton) (0 : Fin 1) isSafe_ok logNSteps (word ++ₛ bufEnd) with
-  | Parsed sem buff => rw [hp] at H; obtain ⟨h1, h2, _⟩ := H; rw [h1, h2]
-  | Timeout => rw [hp] at H; omega
-  | Fail s t => rw [hp] at H; exact H.elim
+      = .Parsed (ptSem tree) bufEnd :=
+  Main.parse_complete (A := automaton) (0 : Fin 1) isSafe_ok isComplete_ok
+    logNSteps word bufEnd tree hfuel
 
 /-- **Unambiguity** for the generated Arith parser: any two parse trees of the
 same word have equal semantic value. -/

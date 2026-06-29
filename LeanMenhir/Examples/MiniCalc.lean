@@ -188,19 +188,15 @@ is unambiguous (any two trees of a word have the same AST). -/
 theorem minicalcComplete : complete (A := automaton) := complete_is_validator (by decide)
 
 /-- Every parse `tree`, given enough fuel, is parsed to its own AST, consuming
-exactly `word`. -/
+exactly `word` — a direct instance of `Main.parse_complete`. -/
 theorem mini_parses (logNSteps : Nat) (word : List automaton.Token)
     (bufEnd : Buffer (A := automaton))
     (tree : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word)
     (hfuel : ptSize tree ≤ 2 ^ logNSteps) :
     Main.parse (A := automaton) (0 : Fin 1) minicalcSafe logNSteps (word ++ₛ bufEnd)
-      = .Parsed (ptSem tree) bufEnd := by
-  have H := Main.parse_complete (A := automaton) (0 : Fin 1) minicalcSafe minicalcComplete
-    logNSteps word bufEnd tree
-  cases hp : Main.parse (A := automaton) (0 : Fin 1) minicalcSafe logNSteps (word ++ₛ bufEnd) with
-  | Parsed sem buff => rw [hp] at H; obtain ⟨h1, h2, _⟩ := H; rw [h1, h2]
-  | Timeout => rw [hp] at H; omega
-  | Fail s t => rw [hp] at H; exact H.elim
+      = .Parsed (ptSem tree) bufEnd :=
+  Main.parse_complete (A := automaton) (0 : Fin 1) minicalcSafe minicalcComplete
+    logNSteps word bufEnd tree hfuel
 
 /-- **Unambiguity**: any two parse trees of the same word have equal AST. -/
 theorem mini_unambiguous (word : List automaton.Token)

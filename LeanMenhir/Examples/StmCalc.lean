@@ -173,19 +173,15 @@ example : parseStm "1+;" = none := by native_decide
 The heterogeneous automaton supports the full verified stack unchanged. -/
 
 /-- Every parse `tree`, given enough fuel, parses to its own AST, consuming
-exactly `word`. -/
+exactly `word` — a direct instance of `Main.parse_complete`. -/
 theorem stm_parses (logNSteps : Nat) (word : List automaton.Token)
     (bufEnd : Buffer (A := automaton))
     (tree : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word)
     (hfuel : ptSize tree ≤ 2 ^ logNSteps) :
     Main.parse (A := automaton) (0 : Fin 1) stmSafe logNSteps (word ++ₛ bufEnd)
-      = .Parsed (ptSem tree) bufEnd := by
-  have H := Main.parse_complete (A := automaton) (0 : Fin 1) stmSafe stmComplete
-    logNSteps word bufEnd tree
-  cases hp : Main.parse (A := automaton) (0 : Fin 1) stmSafe logNSteps (word ++ₛ bufEnd) with
-  | Parsed sem buff => rw [hp] at H; obtain ⟨h1, h2, _⟩ := H; rw [h1, h2]
-  | Timeout => rw [hp] at H; omega
-  | Fail s t => rw [hp] at H; exact H.elim
+      = .Parsed (ptSem tree) bufEnd :=
+  Main.parse_complete (A := automaton) (0 : Fin 1) stmSafe stmComplete
+    logNSteps word bufEnd tree hfuel
 
 /-- **Unambiguity**: any two parse trees of the same word have equal AST. -/
 theorem stm_unambiguous (word : List automaton.Token)
