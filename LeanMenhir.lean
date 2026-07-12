@@ -14,6 +14,7 @@ import LeanMenhir.Interpreter.Congr
 import LeanMenhir.Anchored
 import LeanMenhir.Main
 import LeanMenhir.Runtime
+import LeanMenhir.Guarantees
 import LeanMenhir.Generator.FinAlphabet
 import LeanMenhir.Generator.Tables
 import LeanMenhir.Generator.LR1
