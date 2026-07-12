@@ -223,6 +223,27 @@ theorem mini_unambiguous (word : List automaton.Token)
 /-- The EOF token that `lexString` pads with. -/
 def eofTok : automaton.Token := ((6 : Fin 10), Expr.num 0)
 
+/-- The MiniCalc grammar is **EOF-anchored**: the start nonterminal `parse_expr`
+occurs in no RHS, its sole production ends in `EOF`, and `EOF` occurs nowhere
+else. Kernel `decide`. -/
+theorem minicalcAnchored :
+    isEofAnchored (G := automaton.toGrammar) (6 : Fin 10)
+      (automaton.start_nt (0 : Fin 1)) = true := by decide
+
+/-- **Exact consumption**: a successful parse of the padded buffer recognised
+*exactly* `toks ++ [EOF]` — the whole input, no trailing garbage — provided the
+lexer never emits the EOF terminal (`lexAux` never does). Combines soundness
+with the `minicalcAnchored` certificate via `Main.parse_correct_anchored`. -/
+theorem mini_consumes_all (toks : List automaton.Token) (logNSteps : Nat)
+    (hlex : ∀ tok ∈ toks, automaton.token_term tok ≠ automaton.token_term eofTok)
+    {sem} {rest : Buffer (A := automaton)}
+    (hp : Main.parse (A := automaton) (0 : Fin 1) minicalcSafe logNSteps
+      (Buf.ofListEof toks eofTok) = .Parsed sem rest) :
+    ∃ pt : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) (toks ++ [eofTok]),
+      ptSem pt = sem :=
+  Main.parse_correct_anchored (A := automaton) (0 : Fin 1) minicalcSafe logNSteps toks
+    eofTok (isEofAnchored_spec minicalcAnchored) hlex hp
+
 /-- **Runtime-path completeness**: completeness on the *exact buffer shape
 `parseExpr` executes* (`Buf.ofListEof toks EOF`, array-backed), not just on the
 push-list buffers `word ++ₛ bufferEnd` of `mini_parses`. If the lexed tokens

@@ -176,6 +176,15 @@ theorem get_appendList_const (a : α) : ∀ (xs : List α) (n : Nat),
     rw [cons_append_stream, List.getD_cons_succ]
     exact get_appendList_const a xs n
 
+/-- Within the prepended list, a push-list buffer denotes the list itself. -/
+theorem get_appendList_lt : ∀ (xs : List α) (b : Buf α) (n : Nat), (hn : n < xs.length) →
+    (xs ++ₛ b).get n = xs[n]
+  | [], _, n, hn => absurd hn (by simp)
+  | x :: xs, b, 0, _ => rfl
+  | x :: xs, b, n + 1, hn => by
+    rw [cons_append_stream, get_succ, tail_cons, List.getElem_cons_succ]
+    exact get_appendList_lt xs b n (by simpa using hn)
+
 /-- Padding the constant buffer with copies of its own element is invisible in
 the denotation. -/
 theorem get_replicate_const (k : Nat) (a : α) :

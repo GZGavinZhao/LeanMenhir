@@ -95,4 +95,30 @@ theorem parseList_complete {E : Type}
   | Fail st tok => rw [hp] at H; exact H.elim
   | Timeout => rw [hp] at H; omega
 
+/-- **Exact-consumption soundness of the runtime driver** for EOF-anchored
+grammars: if the grammar is EOF-anchored (decidable via `isEofAnchored`) and the
+lexer never emits the EOF terminal, then `parseList` returning `.ok v` means the
+*entire* input was consumed, anchored at EOF — the recognised word is exactly
+`toks ++ [eof]` — and `v` is the semantics of one of its parse trees. Without
+the anchoring hypothesis, success only certifies that *some prefix* of the
+padded stream was recognised (`Main.parse_correct`); this closes that gap. -/
+theorem parseList_sound_anchored {E : Type}
+    (init : A.InitState) (hsafe : Main.safeValidator () = true)
+    (eof : A.Token) (toks : List A.Token)
+    (onFail : A.State → A.Token → E) (onTimeout : E)
+    (hanch : EofAnchored (A.token_term eof) (A.start_nt init))
+    (hlex : ∀ tok ∈ toks, A.token_term tok ≠ A.token_term eof)
+    {v : ResultType A init}
+    (hok : parseList init hsafe eof toks onFail onTimeout = .ok v) :
+    ∃ pt : ParseTree (.NT (A.start_nt init)) (toks ++ [eof]), ptSem pt = v := by
+  unfold parseList at hok
+  cases hp : Main.parse init hsafe (fuelFor toks.length) (Buf.ofListEof toks eof) with
+  | Parsed v' rest =>
+    rw [hp] at hok
+    injection hok with hv
+    subst hv
+    exact Main.parse_correct_anchored init hsafe (fuelFor toks.length) toks eof hanch hlex hp
+  | Fail st tok => rw [hp] at hok; exact absurd hok (by simp)
+  | Timeout => rw [hp] at hok; exact absurd hok (by simp)
+
 end LeanMenhir.Runtime

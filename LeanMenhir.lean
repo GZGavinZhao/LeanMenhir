@@ -11,6 +11,7 @@ import LeanMenhir.Interpreter
 import LeanMenhir.Interpreter.Correct
 import LeanMenhir.Interpreter.Complete
 import LeanMenhir.Interpreter.Congr
+import LeanMenhir.Anchored
 import LeanMenhir.Main
 import LeanMenhir.Runtime
 import LeanMenhir.Generator.FinAlphabet
