@@ -33,6 +33,7 @@ LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Runtime
 import LeanMenhir.Generator.BuildTables
+import LeanMenhir.Generator.GrammarCheck
 
 namespace LeanMenhir.Examples.CalcTemplate
 
@@ -134,6 +135,11 @@ theorem calcSafe : Main.safeValidator (A := automaton) () = true := by rfl
 
 /-- Completeness — kernel `rfl` (BTree-backed tables). -/
 theorem calcComplete : Main.completeValidator (A := automaton) () = true := by rfl
+
+/-- The tables' **grammar half** is exactly `grammar` — the part the validators
+cannot check (they certify only the automaton half). This ties the verified
+theorems, stated over the tables' grammar, to the `Grammar0` a human reviews. -/
+theorem calcGrammarMatch : tablesMatchGrammar tables grammar = true := by rfl
 
 /-- The automaton's token type: `Position × Σ t, termType t`. -/
 abbrev Tok : Type := automaton.Token
