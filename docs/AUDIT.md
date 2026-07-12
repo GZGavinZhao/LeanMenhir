@@ -12,7 +12,7 @@ tooling — a bug there can make a build fail, never make a theorem lie.
 
 | # | File | What to check | Defines |
 |---|------|----------------|---------|
-| 1 | `LeanMenhir/Grammar.lean` | `Grammar`, `Symbol`, `ParseTree`, `ptSem`, `ptSize`. A `ParseTree (.NT n) w` is a derivation of the token word `w` from nonterminal `n`; `ptSem` folds the semantic actions over it. Note the RHS-reversed convention (`prod_rhs_rev`) and that a `ParseTreeList`'s word is the concatenation in *grammar* order. | **"the language"** |
+| 1 | `LeanMenhir/Grammar.lean` | `Grammar`, `Symbol`, `ParseTree`, `ptSem`, `ptSize`. A `ParseTree (.NT n) w` is a derivation of the token word `w` from nonterminal `n`; `ptSem` folds the semantic actions over it. Note the RHS-reversed convention (`prod_rhs_rev`) and that a `ParseTreeList`'s word is the concatenation in *grammar* order. Then `LeanMenhir/Language.lean` (30 lines): the propositional form — `Derives nt w := Nonempty (ParseTree (.NT nt) w)` and `w ∈ language nt` — i.e. **membership in the language is the existence of a derivation**. | **"the language"** |
 | 2 | `LeanMenhir/Buf.lean` | `Buf` with `head`/`tail`/`cons`/`appendList` and the denotation `get : Buf α → Nat → α`. All statements compare buffers by `get` (the token stream they denote). | **"the input"** |
 | 3 | `LeanMenhir/Interpreter.lean` | The signature and body of `parse` (fuelled LR driver; reads the input only via `head`/`tail`), and `ParseResult` (`Parsed`/`Timeout`/`Fail`). For applications, also `Runtime.parseList` (pads a finite token list with an EOF filler, projects into `Except`). | **"what runs"** |
 | 4 | `LeanMenhir/Guarantees.lean` | The nine end-to-end theorems, each with an informal reading, its caveats, and a build-enforced `#print axioms` guard. | **"what is guaranteed"** |
@@ -20,14 +20,21 @@ tooling — a bug there can make a build fail, never make a theorem lie.
 ## The guarantees, informally
 
 All are stated in `Guarantees.lean`; names below are the ones to `#check`.
+Most guarantees come in **two faces**: a *recognition-level* face phrased with
+`word ∈ language nt` (the sentence a reader expects), and a *semantic-level*
+face phrased with an explicit derivation `tree : ParseTree …` — strictly
+stronger, since it also pins the returned value (`ptSem tree`) and the fuel
+(`ptSize tree`). The derivation argument **is** the membership hypothesis, in
+proof-relevant form; the recognition faces are corollaries.
 
 | Theorem | Reading |
 |---|---|
-| `parser_sound` | accepted ⇒ the consumed prefix really derives from the start symbol, and the returned value is that derivation's semantics |
+| `parser_sound` / `parser_sound_mem` | accepted ⇒ the consumed prefix really derives from the start symbol (`∈ language`), and the returned value is that derivation's semantics |
 | `parser_complete` | every derivation is found: parsing its word returns exactly its semantic value and the untouched continuation (given fuel ≥ tree size) |
-| `parser_never_rejects_valid` | derivable input is never `Fail`ed, with any fuel |
+| `parser_accepts` | **every word of the language is accepted** (membership hypothesis; fuel threshold existential, since membership hides the derivation's size) |
+| `parser_never_rejects_valid` | a word of the language is never `Fail`ed, with any fuel |
 | `grammar_unambiguous` | any two derivations of a word have equal **semantic value** (value-level; instantiate values with syntax trees for tree-level uniqueness) |
-| `parser_consumes_exactly` | EOF-anchored grammar + EOF-free lexer ⇒ acceptance means **the whole input and nothing else** was parsed |
+| `parser_consumes_exactly` | EOF-anchored grammar + EOF-free lexer ⇒ acceptance means **the whole input and nothing else** was parsed (`toks ++ [eof] ∈ language …`) |
 | `runtime_sound` / `runtime_complete` / `runtime_consumes_exactly` | all of the above transferred to the *executed* driver `Runtime.parseList` (the parser cannot distinguish denotationally equal buffers — `parse_congr`) |
 | `tables_grammar_faithful` | the grammar those theorems quantify over is exactly the `Grammar0` you wrote — production by production, no index clamping |
 

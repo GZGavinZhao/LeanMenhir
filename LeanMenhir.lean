@@ -3,6 +3,7 @@
 -- plus an (untrusted) native LR(1) table generator certified by the validator.
 import LeanMenhir.Alphabet
 import LeanMenhir.Grammar
+import LeanMenhir.Language
 import LeanMenhir.Automaton
 import LeanMenhir.Validator.Classes
 import LeanMenhir.Validator.Safe

@@ -13,7 +13,9 @@ requires no knowledge of the proof architecture.
 Read, in order:
 
 1. `LeanMenhir/Grammar.lean` — what a grammar, a derivation (`ParseTree`), and
-   its semantic value (`ptSem`) are. **This defines "the language".**
+   its semantic value (`ptSem`) are; `LeanMenhir/Language.lean` — the
+   propositional form: `Derives` / `word ∈ language nt` ("a derivation exists").
+   **These define "the language".**
 2. `LeanMenhir/Buf.lean` — what an input buffer denotes (`Buf.get`).
    **This defines "the input".**
 3. `LeanMenhir/Interpreter.lean` — the signature and definition of `parse`
@@ -40,6 +42,7 @@ LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Runtime
 import LeanMenhir.Generator.GrammarCheck
+import LeanMenhir.Language
 
 namespace LeanMenhir
 namespace Guarantees
@@ -73,6 +76,17 @@ theorem parser_sound (init : A.InitState) (hsafe : Main.safeValidator () = true)
   rw [h] at H
   exact H
 
+/-- **Soundness, recognition face** — *if the parser accepts, the consumed
+prefix is a word of the language.* The membership-only corollary of
+`parser_sound` (the derivation is forgotten into `∈ language`). -/
+theorem parser_sound_mem (init : A.InitState) (hsafe : Main.safeValidator () = true)
+    (fuel : Nat) (buffer : Buffer) {sem : A.symbol_semantic_type (.NT (A.start_nt init))}
+    {rest : Buffer}
+    (h : Main.parse init hsafe fuel buffer = .Parsed sem rest) :
+    ∃ word ∈ language (A.start_nt init), buffer.get = (word ++ₛ rest).get := by
+  obtain ⟨word, pt, hbuf, -⟩ := parser_sound init hsafe fuel buffer h
+  exact ⟨word, ⟨pt⟩, hbuf⟩
+
 /-! ## 2. Completeness -/
 
 /-- **Completeness** — *every program in the language is parsed, to the right
@@ -103,19 +117,41 @@ theorem parser_complete (init : A.InitState) (hsafe : Main.safeValidator () = tr
   | Timeout => rw [hp] at H; omega
   | Fail st tok => rw [hp] at H; exact H.elim
 
-/-- **No spurious rejection** — *valid input is never `Fail`ed, with any fuel.*
+/-- **Completeness, recognition face** — *every word of the language is
+accepted.*
 
-If `word` has a derivation, the parser never answers `.Fail` on it — even with
-too little fuel (it answers `.Timeout` instead). Together with
-`parser_complete` this is what makes `.Fail` a trustworthy "syntax error".
+If `word ∈ language (A.start_nt init)` — the hypothesis a reader expects — then
+the parser, given enough fuel, accepts `word` (followed by anything) and hands
+back the untouched continuation. Membership alone cannot reveal the size of a
+derivation, hence the existential fuel threshold; `parser_complete` (the
+semantic face, of which this is a corollary) pins value and fuel exactly, and
+`runtime_complete` discharges the fuel up to physical realisability. -/
+theorem parser_accepts (init : A.InitState) (hsafe : Main.safeValidator () = true)
+    (hcomplete : Main.completeValidator () = true)
+    {word : List A.Token} (hmem : word ∈ language (A.start_nt init))
+    (bufferEnd : Buffer) :
+    ∃ fuel₀, ∀ fuel, fuel₀ ≤ fuel →
+      ∃ sem, Main.parse init hsafe fuel (word ++ₛ bufferEnd) = .Parsed sem bufferEnd := by
+  obtain ⟨tree⟩ := hmem
+  refine ⟨ptSize tree, fun fuel hfuel => ⟨ptSem tree, ?_⟩⟩
+  exact parser_complete init hsafe hcomplete word bufferEnd tree fuel
+    (Nat.le_trans hfuel (Nat.le_of_lt Nat.lt_two_pow_self))
+
+/-- **No spurious rejection** — *a word of the language is never `Fail`ed, with
+any fuel.*
+
+If `word ∈ language (A.start_nt init)`, the parser never answers `.Fail` on it —
+even with too little fuel (it answers `.Timeout` instead). Together with
+`parser_accepts` this is what makes `.Fail` a trustworthy "syntax error".
 
 Wraps the `Fail → False` case of `Main.parse_complete`. -/
 theorem parser_never_rejects_valid (init : A.InitState)
     (hsafe : Main.safeValidator () = true) (hcomplete : Main.completeValidator () = true)
-    (word : List A.Token) (bufferEnd : Buffer)
-    (tree : ParseTree (.NT (A.start_nt init)) word)
+    {word : List A.Token} (hmem : word ∈ language (A.start_nt init))
+    (bufferEnd : Buffer)
     (fuel : Nat) (st : A.State) (tok : A.Token) :
     Main.parse init hsafe fuel (word ++ₛ bufferEnd) ≠ .Fail st tok := by
+  obtain ⟨tree⟩ := hmem
   intro hp
   have H := Main.parse_complete init hsafe hcomplete fuel word bufferEnd tree
   rw [hp] at H
@@ -162,8 +198,10 @@ theorem parser_consumes_exactly (init : A.InitState)
     (hlex : ∀ tok ∈ toks, A.token_term tok ≠ A.token_term eofTok)
     {sem : A.symbol_semantic_type (.NT (A.start_nt init))} {rest : Buffer}
     (h : Main.parse init hsafe fuel (Buf.ofListEof toks eofTok) = .Parsed sem rest) :
-    ∃ pt : ParseTree (.NT (A.start_nt init)) (toks ++ [eofTok]), ptSem pt = sem :=
-  Main.parse_correct_anchored init hsafe fuel toks eofTok hanch hlex h
+    toks ++ [eofTok] ∈ language (A.start_nt init) ∧
+      ∃ pt : ParseTree (.NT (A.start_nt init)) (toks ++ [eofTok]), ptSem pt = sem :=
+  have ⟨pt, hsem⟩ := Main.parse_correct_anchored init hsafe fuel toks eofTok hanch hlex h
+  ⟨⟨pt⟩, pt, hsem⟩
 
 /-! ## 5. The executable driver enjoys all of the above
 
@@ -222,8 +260,11 @@ theorem runtime_consumes_exactly {E : Type} (init : A.InitState)
     (hlex : ∀ tok ∈ toks, A.token_term tok ≠ A.token_term eof)
     {v : Runtime.ResultType A init}
     (h : Runtime.parseList init hsafe eof toks onFail onTimeout = .ok v) :
-    ∃ pt : ParseTree (.NT (A.start_nt init)) (toks ++ [eof]), ptSem pt = v :=
-  Runtime.parseList_sound_anchored init hsafe eof toks onFail onTimeout hanch hlex h
+    toks ++ [eof] ∈ language (A.start_nt init) ∧
+      ∃ pt : ParseTree (.NT (A.start_nt init)) (toks ++ [eof]), ptSem pt = v :=
+  have ⟨pt, hsem⟩ :=
+    Runtime.parseList_sound_anchored init hsafe eof toks onFail onTimeout hanch hlex h
+  ⟨⟨pt⟩, pt, hsem⟩
 
 /-! ## 6. The theorems are about *your* grammar -/
 
@@ -258,8 +299,14 @@ failure. -/
 /-- info: 'LeanMenhir.Guarantees.parser_sound' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms parser_sound
 
+/-- info: 'LeanMenhir.Guarantees.parser_sound_mem' depends on axioms: [propext, Quot.sound] -/
+#guard_msgs in #print axioms parser_sound_mem
+
 /-- info: 'LeanMenhir.Guarantees.parser_complete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms parser_complete
+
+/-- info: 'LeanMenhir.Guarantees.parser_accepts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms parser_accepts
 
 /-- info: 'LeanMenhir.Guarantees.parser_never_rejects_valid' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms parser_never_rejects_valid
