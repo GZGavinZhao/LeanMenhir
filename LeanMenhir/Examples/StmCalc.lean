@@ -70,11 +70,16 @@ untrusted generator and spliced in as a concrete literal via the `build_tables%`
 elaborator (strategy C — single-phase build, kernel-`decide`-friendly). -/
 def stmTables : Gen.GenTables := build_tables% grammar
 
+/-- Production lookups: the `build_tables%` jump trees, with their agreement to
+`grammar.prods` certified by **kernel `rfl`** (intrinsic faithfulness). -/
+@[reducible] def stmLk : Gen.ProdLookup grammar :=
+  Gen.ProdLookup.ofTables grammar stmTables (by rfl)
+
 /-! ### Heterogeneous semantic types and actions -/
 
 /-- Per-nonterminal AST type: `Exp`=2 and `Atom`=3 carry `Exp`; `Program`=0 and
 `Stm`=1 carry `Stm`; the dummy nonterminal `4` carries `Unit`. -/
-def ntType : Fin (stmTables.numNonterm + 1) → Type
+def ntType : Fin (grammar.numNonterm + 1) → Type
   | 2 => Exp
   | 3 => Exp
   | 4 => Unit
@@ -82,15 +87,15 @@ def ntType : Fin (stmTables.numNonterm + 1) → Type
 
 /-- Per-terminal payload type: `NUM`=5 carries a `Nat`; every other terminal
 (keywords, punctuation, EOF, dummy) carries `Unit`. -/
-def termType : Fin (stmTables.numTerm + 1) → Type
+def termType : Fin (grammar.numTerm + 1) → Type
   | 5 => Nat
   | _ => Unit
 
 /-- The semantic actions, each in its *true* curried type (arguments in
 reverse-RHS order). No `Val`, no projection, no `Inhabited`. -/
-def actions : (p : Fin (stmTables.numProd + 1)) →
-    arrowsRight (symTypeOf stmTables ntType termType (.NT (prodLhsOf stmTables p)))
-                ((prodRhsRevOf stmTables p).map (symTypeOf stmTables ntType termType))
+def actions : (p : Fin (grammar.prods.size + 1)) →
+    arrowsRight (grammar.symType0 ntType termType (.NT (grammar.prodLhs0 stmLk p)))
+                ((grammar.prodRhsRev0 stmLk p).map (grammar.symType0 ntType termType))
   | 0 => fun (_ : Unit) (s : Stm) => s                            -- Program → Stm EOF
   | 1 => fun (_ : Unit) (e : Exp) => Stm.sExp e                   -- Stm → Exp ";"  (Exp ↦ Stm)
   | 2 => fun (a : Exp) (_ : Unit) (e : Exp) => Exp.add e a        -- Exp → Exp "+" Atom
@@ -100,15 +105,22 @@ def actions : (p : Fin (stmTables.numProd + 1)) →
   | 6 => ()                                                       -- dummy production
   | ⟨_ + 7, h⟩ => elimOutOfRange h                                -- impossible (numProd+1 = 7)
 
-/-- The verified automaton built from the generated tables via the heterogeneous
-bridge. -/
-instance automaton : Automaton := automatonOfTablesTyped stmTables ntType termType Unit actions
+/-- The verified grammar — a **definitional function of `grammar`** (D9): the
+theorems below quantify over exactly the `Grammar0` above, not over anything the
+untrusted generator produced. -/
+@[reducible] def stmGrammar : Grammar :=
+  grammar.toGrammarTyped stmLk ntType termType Unit actions
+
+/-- The verified automaton for `stmGrammar`; `stmTables` contributes only the
+(untrusted) automaton half. -/
+def automaton : Automaton stmGrammar :=
+  Gen.automatonOfG0TablesTyped grammar stmLk ntType termType Unit actions stmTables
 
 /-- Safety — kernel `rfl` (BTree-backed tables; no compiler-trust axiom). -/
-theorem stmSafe : Main.safeValidator (A := automaton) () = true := by rfl
+theorem stmSafe : Main.safeValidator automaton = true := by rfl
 
 /-- Completeness — kernel `rfl` (BTree-backed tables). -/
-theorem stmComplete : Main.completeValidator (A := automaton) () = true := by rfl
+theorem stmComplete : Main.completeValidator automaton = true := by rfl
 
 /-- The tables' **grammar half** is exactly `grammar` — the part the validators
 cannot check (they certify only the automaton half). This ties the verified
@@ -142,7 +154,7 @@ partial def lexAux : List Char → Option (List Tok)
       | _ => none
 
 /-- Lex a string into a token buffer ending in an infinite `EOF` filler `((), ⟨4, ()⟩)`. -/
-def lexString (s : String) : Option (Buffer (A := automaton)) :=
+def lexString (s : String) : Option (Buffer stmGrammar) :=
   (lexAux s.toList).map (fun toks => Buf.ofListEof toks ((((), ⟨4, ()⟩)) : Tok))
 
 /-- Parse a string into a `Stm` (the start nonterminal's value type). -/
@@ -179,9 +191,9 @@ The heterogeneous automaton supports the full verified stack unchanged. -/
 
 /-- Every parse `tree`, given enough fuel, parses to its own AST, consuming
 exactly `word`. -/
-theorem stm_parses (logNSteps : Nat) (word : List automaton.Token)
-    (bufEnd : Buffer (A := automaton))
-    (tree : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word)
+theorem stm_parses (logNSteps : Nat) (word : List stmGrammar.Token)
+    (bufEnd : Buffer stmGrammar)
+    (tree : ParseTree stmGrammar (.NT (automaton.start_nt (0 : Fin 1))) word)
     (hfuel : ptSize tree ≤ 2 ^ logNSteps) :
     Main.parse (A := automaton) (0 : Fin 1) stmSafe logNSteps (word ++ₛ bufEnd)
       = .Parsed (ptSem tree) bufEnd := by
@@ -193,8 +205,8 @@ theorem stm_parses (logNSteps : Nat) (word : List automaton.Token)
   | Fail s t => rw [hp] at H; exact H.elim
 
 /-- **Unambiguity**: any two parse trees of the same word have equal AST. -/
-theorem stm_unambiguous (word : List automaton.Token)
-    (tree1 tree2 : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word) :
+theorem stm_unambiguous (word : List stmGrammar.Token)
+    (tree1 tree2 : ParseTree stmGrammar (.NT (automaton.start_nt (0 : Fin 1))) word) :
     ptSem tree1 = ptSem tree2 :=
   Main.unambiguity (A := automaton) stmSafe stmComplete ((((), ⟨4, ()⟩)) : Tok)
     (0 : Fin 1) word tree1 tree2

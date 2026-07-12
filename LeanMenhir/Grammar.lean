@@ -89,10 +89,12 @@ def arrowsRight (A : Type) : List Type → Type
 
 /-! ### The grammar interface -/
 
-/-- The grammar interface, mirroring Coq `Grammar.T` (which bundles `Alphs`,
-`Symbol`, and the semantic/production/token parameters). Encoded as a Lean class
-so that one grammar is "in scope" via instance resolution. -/
-class Grammar where
+/-- The grammar: terminals, nonterminals, productions with typed semantic
+actions, and tokens. This is a **structure** (not a class): a grammar is an
+ordinary mathematical object that theorems bind explicitly — `(G : Grammar)` —
+so that every statement visibly says *which grammar* it is about (Coq
+`Grammar.T` bundled the same data as a module functor argument). -/
+structure Grammar where
   Terminal : Type
   Nonterminal : Type
   terminalAlphabet : Alphabet Terminal
@@ -113,47 +115,59 @@ class Grammar where
   token_term : Token → Terminal
   token_sem : (tok : Token) → symbol_semantic_type (.T (token_term tok))
 
-instance instTerminalAlphabet [G : Grammar] : Alphabet G.Terminal := G.terminalAlphabet
-instance instNonterminalAlphabet [G : Grammar] : Alphabet G.Nonterminal := G.nonterminalAlphabet
-instance instProductionAlphabet [G : Grammar] : Alphabet G.Production := G.productionAlphabet
+instance instTerminalAlphabet (G : Grammar) : Alphabet G.Terminal := G.terminalAlphabet
+instance instNonterminalAlphabet (G : Grammar) : Alphabet G.Nonterminal :=
+  G.nonterminalAlphabet
+instance instProductionAlphabet (G : Grammar) : Alphabet G.Production := G.productionAlphabet
 
 /-- Abbreviation for the symbol type of a grammar. -/
 abbrev Grammar.symbol (G : Grammar) : Type := Symbol G.Terminal G.Nonterminal
 
 /-! ### Parse trees -/
 
-variable [G : Grammar]
-
 /- A parse tree recognises a `word` as a single head `symbol`; a `ParseTreeList`
 recognises a `word` as a (reversed) list of head symbols. Semantic values are
-stored at the leaves. Mirrors Coq `parse_tree` / `parse_tree_list`. -/
+stored at the leaves. The grammar `G` is an **explicit** parameter so that
+statements read `G.ParseTree …` — a derivation *in G*. Mirrors Coq `parse_tree`
+/ `parse_tree_list`. -/
 mutual
-inductive ParseTree : Symbol G.Terminal G.Nonterminal → List G.Token → Type where
+inductive ParseTree (G : Grammar) :
+    Symbol G.Terminal G.Nonterminal → List G.Token → Type where
   /-- Parse tree for a terminal symbol. -/
-  | Terminal_pt : (tok : G.Token) → ParseTree (.T (G.token_term tok)) [tok]
+  | Terminal_pt : (tok : G.Token) → ParseTree G (.T (G.token_term tok)) [tok]
   /-- Parse tree for a non-terminal symbol. -/
   | Non_terminal_pt : (prod : G.Production) → {word : List G.Token} →
-      ParseTreeList (G.prod_rhs_rev prod) word →
-      ParseTree (.NT (G.prod_lhs prod)) word
+      ParseTreeList G (G.prod_rhs_rev prod) word →
+      ParseTree G (.NT (G.prod_lhs prod)) word
 
-inductive ParseTreeList : List (Symbol G.Terminal G.Nonterminal) → List G.Token → Type where
-  | Nil_ptl : ParseTreeList [] []
+inductive ParseTreeList (G : Grammar) :
+    List (Symbol G.Terminal G.Nonterminal) → List G.Token → Type where
+  | Nil_ptl : ParseTreeList G [] []
   | Cons_ptl : {head_symbolsq : List (Symbol G.Terminal G.Nonterminal)} →
-      {wordq : List G.Token} → ParseTreeList head_symbolsq wordq →
+      {wordq : List G.Token} → ParseTreeList G head_symbolsq wordq →
       {head_symbolt : Symbol G.Terminal G.Nonterminal} → {wordt : List G.Token} →
-      ParseTree head_symbolt wordt →
-      ParseTreeList (head_symbolt :: head_symbolsq) (wordq ++ wordt)
+      ParseTree G head_symbolt wordt →
+      ParseTreeList G (head_symbolt :: head_symbolsq) (wordq ++ wordt)
 end
+
+/-- Dot-notation alias so statements can say `G.ParseTree s w` — “a derivation
+in `G`”. -/
+protected abbrev Grammar.ParseTree := @LeanMenhir.ParseTree
+
+@[inherit_doc Grammar.ParseTree]
+protected abbrev Grammar.ParseTreeList := @LeanMenhir.ParseTreeList
+
+variable {G : Grammar}
 
 /- The semantic value associated with a parse tree (Coq `pt_sem` / `ptl_sem`). -/
 mutual
 def ptSem : {hs : Symbol G.Terminal G.Nonterminal} → {w : List G.Token} →
-    ParseTree hs w → G.symbol_semantic_type hs
+    ParseTree G hs w → G.symbol_semantic_type hs
   | _, _, .Terminal_pt tok => G.token_sem tok
   | _, _, .Non_terminal_pt prod ptl => ptlSem ptl (G.prod_action prod)
 
 def ptlSem {A : Type} : {hs : List (Symbol G.Terminal G.Nonterminal)} →
-    {w : List G.Token} → ParseTreeList hs w →
+    {w : List G.Token} → ParseTreeList G hs w →
     arrowsRight A (hs.map G.symbol_semantic_type) → A
   | _, _, .Nil_ptl, act => act
   | _, _, .Cons_ptl q t, act => ptlSem q (act (ptSem t))
@@ -162,12 +176,12 @@ end
 /- The size of a parse tree (Coq `pt_size` / `ptl_size`). -/
 mutual
 def ptSize : {hs : Symbol G.Terminal G.Nonterminal} → {w : List G.Token} →
-    ParseTree hs w → Nat
+    ParseTree G hs w → Nat
   | _, _, .Terminal_pt _ => 1
   | _, _, .Non_terminal_pt _ l => ptlSize l + 1
 
 def ptlSize : {hs : List (Symbol G.Terminal G.Nonterminal)} → {w : List G.Token} →
-    ParseTreeList hs w → Nat
+    ParseTreeList G hs w → Nat
   | _, _, .Nil_ptl => 0
   | _, _, .Cons_ptl q t => ptSize t + ptlSize q
 end

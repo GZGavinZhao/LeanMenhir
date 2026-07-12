@@ -99,11 +99,6 @@ theorem tablesMatchGrammar_spec {t : GenTables} {g : Grammar0}
 
 /-! ### Faithfulness: under the cross-check, no clamping occurs -/
 
-/-- On in-range indices, the `Fin`-padding conversion `cl` is the identity. -/
-theorem cl_val_of_le {n i : Nat} (h : i ≤ n) : (cl n i).val = i := by
-  simp only [cl]
-  omega
-
 /-- On in-range terminal symbols, `gsymToSymbol` performs no clamping. -/
 theorem gsymToSymbol_term (t : GenTables) {i : Nat} (h : i ≤ t.numTerm) :
     gsymToSymbol t (.term i) = .T ⟨i, Nat.lt_succ_of_le h⟩ := by

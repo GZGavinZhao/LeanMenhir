@@ -70,16 +70,19 @@ def grammar : Grammar0 where
 /-- Tables generated at elaboration time (jump-table-backed lookups). -/
 def tables : GenTables := build_tables% grammar
 
-def ntType : Fin (tables.numNonterm + 1) → Type
+/-- Jump-tree production lookups, agreement with `grammar.prods` by kernel `rfl`. -/
+@[reducible] def scaleLk : ProdLookup grammar := ProdLookup.ofTables grammar tables (by rfl)
+
+def ntType : Fin (grammar.numNonterm + 1) → Type
   | 2 => Unit   -- dummy nonterminal
   | _ => Nat    -- Start, Sel both carry the selected index
-def termType : Fin (tables.numTerm + 1) → Type
+def termType : Fin (grammar.numTerm + 1) → Type
   | _ => Unit
 
 /-- 21-arm dependent dispatcher + the `elimOutOfRange` exhaustiveness shim. -/
-def actions : (p : Fin (tables.numProd + 1)) →
-    arrowsRight (symTypeOf tables ntType termType (.NT (prodLhsOf tables p)))
-                ((prodRhsRevOf tables p).map (symTypeOf tables ntType termType))
+def actions : (p : Fin (grammar.prods.size + 1)) →
+    arrowsRight (grammar.symType0 ntType termType (.NT (grammar.prodLhs0 scaleLk p)))
+                ((grammar.prodRhsRev0 scaleLk p).map (grammar.symType0 ntType termType))
   | 0 => fun (_ : Unit) (n : Nat) => n
   | 1 => fun (_ : Unit) => (0 : Nat)
   | 2 => fun (_ : Unit) => (1 : Nat)
@@ -104,15 +107,21 @@ def actions : (p : Fin (tables.numProd + 1)) →
   | 21 => ()
   | ⟨_ + 22, h⟩ => elimOutOfRange h
 
-/-- The verified automaton built from the generated tables. -/
-instance automaton : Automaton := automatonOfTablesTyped tables ntType termType Unit actions
+/-- The verified grammar — a **definitional function of `grammar`** (D9). -/
+@[reducible] def scaleGrammar : Grammar :=
+  grammar.toGrammarTyped scaleLk ntType termType Unit actions
+
+/-- The verified automaton for `scaleGrammar`; `tables` contributes only the
+(untrusted) automaton half. -/
+def automaton : Automaton scaleGrammar :=
+  automatonOfG0TablesTyped grammar scaleLk ntType termType Unit actions tables
 
 /-- Safety — kernel `rfl` (BTree-backed tables: `O(log)` lookups in the
 validator, with no compiler-trust axiom). -/
-theorem scaleSafe : Main.safeValidator (A := automaton) () = true := by rfl
+theorem scaleSafe : Main.safeValidator automaton = true := by rfl
 
 /-- Completeness — kernel `rfl` (BTree-backed tables). -/
-theorem scaleComplete : Main.completeValidator (A := automaton) () = true := by rfl
+theorem scaleComplete : Main.completeValidator automaton = true := by rfl
 
 /-- The tables' **grammar half** is exactly `grammar` — the part the validators
 cannot check. Subsumes the earlier ad-hoc jump-table-vs-array agreement spot

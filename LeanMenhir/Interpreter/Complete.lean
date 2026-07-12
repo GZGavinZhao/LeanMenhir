@@ -20,25 +20,25 @@ namespace LeanMenhir
 
 open Buf
 
-variable [A : Automaton]
+variable {G : Grammar} {A : Automaton G}
 
 /-! ### Fixpoint-correctness lemmas for `nullable` and `first` -/
 
 /- If a parse tree recognises the empty word, its head symbol is nullable
 (Coq `nullable_correct` / `nullable_correct_list`). -/
 mutual
-theorem nullable_correct (hc : complete) :
-    {head : Symbol A.Terminal A.Nonterminal} → {word : List A.Token} →
-    word = [] → ParseTree head word → nullableSymb head = true
+theorem nullable_correct (hc : complete A) :
+    {head : Symbol G.Terminal G.Nonterminal} → {word : List G.Token} →
+    word = [] → ParseTree G head word → nullableSymb A head = true
   | _, _, hw, .Terminal_pt _ => by simp at hw
   | _, _, hw, .Non_terminal_pt prod ptl => by
     have hnull := nullable_correct_list hc hw ptl
     have hs := nullableStable_of_complete hc prod
     rw [if_pos hnull] at hs
     exact hs
-theorem nullable_correct_list (hc : complete) :
-    {heads : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
-    word = [] → ParseTreeList heads word → nullableWord heads = true
+theorem nullable_correct_list (hc : complete A) :
+    {heads : List (Symbol G.Terminal G.Nonterminal)} → {word : List G.Token} →
+    word = [] → ParseTreeList G heads word → nullableWord A heads = true
   | _, _, _, .Nil_ptl => rfl
   | _, _, hw, .Cons_ptl q t => by
     obtain ⟨hq, ht⟩ := List.append_eq_nil_iff.1 hw
@@ -49,16 +49,16 @@ theorem nullable_correct_list (hc : complete) :
     exact ⟨h2, h1⟩
 end
 
-/-- `firstWordSet` distributes over append (Coq `first_word_set_app`). -/
-theorem first_word_set_app (t : A.Terminal)
-    (word1 word2 : List (Symbol A.Terminal A.Nonterminal)) :
-    t ∈ firstWordSet (word1 ++ word2) ↔
-    t ∈ firstWordSet word1 ∨ (t ∈ firstWordSet word2 ∧ nullableWord word1.reverse = true) := by
+/-- `firstWordSet A` distributes over append (Coq `first_word_set_app`). -/
+theorem first_word_set_app (t : G.Terminal)
+    (word1 word2 : List (Symbol G.Terminal G.Nonterminal)) :
+    t ∈ firstWordSet A (word1 ++ word2) ↔
+    t ∈ firstWordSet A word1 ∨ (t ∈ firstWordSet A word2 ∧ nullableWord A word1.reverse = true) := by
   induction word1 with
   | nil => simp [firstWordSet, nullableWord]
   | cons s word1 IH =>
     rw [List.cons_append]
-    by_cases hs : nullableSymb s = true
+    by_cases hs : nullableSymb A s = true
     · simp only [firstWordSet, hs, if_true, List.mem_append, IH, List.reverse_cons,
         nullableWord, List.all_append, List.all_cons, List.all_nil, Bool.and_true]
       grind
@@ -70,18 +70,18 @@ theorem first_word_set_app (t : A.Terminal)
 /- If a parse tree recognises a word starting with `t`, then `token_term t` is in
 the first set of the head symbol (Coq `first_correct` / `first_correct_list`). -/
 mutual
-theorem first_correct (hc : complete) :
-    {head : Symbol A.Terminal A.Nonterminal} → {t : A.Token} → {q : List A.Token} →
-    ParseTree head (t :: q) → A.token_term t ∈ firstSymbSet head
+theorem first_correct (hc : complete A) :
+    {head : Symbol G.Terminal G.Nonterminal} → {t : G.Token} → {q : List G.Token} →
+    ParseTree G head (t :: q) → G.token_term t ∈ firstSymbSet A head
   | _, _, _, .Terminal_pt _ => by simp [firstSymbSet]
   | _, _, _, .Non_terminal_pt prod ptl => by
     simp only [firstSymbSet]
     exact firstStable_of_complete hc prod _ (first_correct_list hc rfl ptl)
-theorem first_correct_list (hc : complete) :
-    {heads : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
-    {t : A.Token} → {q : List A.Token} →
-    word = t :: q → ParseTreeList heads word →
-    A.token_term t ∈ firstWordSet heads.reverse
+theorem first_correct_list (hc : complete A) :
+    {heads : List (Symbol G.Terminal G.Nonterminal)} → {word : List G.Token} →
+    {t : G.Token} → {q : List G.Token} →
+    word = t :: q → ParseTreeList G heads word →
+    G.token_term t ∈ firstWordSet A heads.reverse
   | _, _, _, _, hw, .Nil_ptl => by simp at hw
   | _, _, _, _, hw, .Cons_ptl ptlq pt => by
     rw [List.reverse_cons, first_word_set_app]
@@ -94,13 +94,13 @@ theorem first_correct_list (hc : complete) :
     · exact Or.inl (first_correct_list hc h1 ptlq)
 end
 
-/-! ### Stack compatibility for parse-tree lists -/
+/-! ### Stack A compatibility for parse-tree lists -/
 
 /-- A parse-tree list is compatible with a stack when the top of the stack holds
 exactly the semantic values of the list (Coq `ptl_stack_compat`). -/
-def ptlStackCompat (stk0 : Stack) :
-    {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
-    ParseTreeList symbs word → Stack → Prop
+def ptlStackCompat (stk0 : Stack A) :
+    {symbs : List (Symbol G.Terminal G.Nonterminal)} → {word : List G.Token} →
+    ParseTreeList G symbs word → Stack A → Prop
   | _, _, .Nil_ptl, stk => stk0 = stk
   | _, _, .Cons_ptl ptl' pt, stk =>
       match stk with
@@ -108,15 +108,15 @@ def ptlStackCompat (stk0 : Stack) :
       | cell :: stk' =>
           ptlStackCompat stk0 ptl' stk' ∧
           ∃ e : _ = A.last_symb_of_non_init_state cell.1,
-            cell.2 = cast (congrArg A.symbol_semantic_type e) (ptSem pt)
+            cell.2 = cast (congrArg G.symbol_semantic_type e) (ptSem pt)
 
 /-- When a parse-tree list is compatible with a stack, `pop`ping it (per the
 declarative spec) yields the list's semantic value (Coq
 `pop_stack_compat_pop_spec`). -/
 theorem pop_stack_compat_pop_spec {R : Type} :
-    {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
-    (ptl : ParseTreeList symbs word) → (stk stk0 : Stack) →
-    (action : arrowsRight R (symbs.map A.symbol_semantic_type)) →
+    {symbs : List (Symbol G.Terminal G.Nonterminal)} → {word : List G.Token} →
+    (ptl : ParseTreeList G symbs word) → (stk stk0 : Stack A) →
+    (action : arrowsRight R (symbs.map G.symbol_semantic_type)) →
     ptlStackCompat stk0 ptl stk → PopSpec symbs stk action stk0 (ptlSem ptl action)
   | _, _, .Nil_ptl, stk, stk0, action, h => by
     simp only [ptlStackCompat] at h; subst h
@@ -137,8 +137,8 @@ theorem pop_stack_compat_pop_spec {R : Type} :
 
 /-- The concrete `pop` agrees with any `PopSpec` derivation (reverse of
 `pop_spec_ok`). -/
-theorem pop_eq_of_popSpec {R : Type} {symbs : List (Symbol A.Terminal A.Nonterminal)} {stk : Stack}
-    {action : arrowsRight R (symbs.map A.symbol_semantic_type)} {stk0 : Stack} {res : R}
+theorem pop_eq_of_popSpec {R : Type} {symbs : List (Symbol G.Terminal G.Nonterminal)} {stk : Stack A}
+    {action : arrowsRight R (symbs.map G.symbol_semantic_type)} {stk0 : Stack A} {res : R}
     (h : PopSpec symbs stk action stk0 res) :
     ∀ hp : Prefix symbs (symbStackOfStack stk), pop symbs stk hp action = (stk0, res) := by
   induction h with
@@ -146,7 +146,7 @@ theorem pop_eq_of_popSpec {R : Type} {symbs : List (Symbol A.Terminal A.Nontermi
   | cons st stk0' action' sem stk' res' h' ih =>
     intro hp
     rw [pop]
-    have hcast : cast (congrArg A.symbol_semantic_type (Prefix.inv_cons hp).1.symm) sem = sem :=
+    have hcast : cast (congrArg G.symbol_semantic_type (Prefix.inv_cons hp).1.symm) sem = sem :=
       eq_of_heq (cast_heq _ _)
     rw [hcast]
     exact ih _
@@ -158,25 +158,25 @@ section Completeness
 /- The initial state, the full word to be parsed, and the buffer left over at the
 end of parsing are fixed throughout the completeness proof (Coq's section
 `Variable`s). -/
-variable (init : A.InitState) (full_word : List A.Token) (buffer_end : Buffer)
+variable (init : A.InitState) (full_word : List G.Token) (buffer_end : Buffer G)
 
 /- A "parse tree zipper" is a parse tree with a hole, represented upside-down: the
 root of the original tree is a leaf of the zipper and the hole is its root. Coq
 `pt_zipper` / `ptl_zipper`. -/
 mutual
-inductive PtZipper : Symbol A.Terminal A.Nonterminal → List A.Token → Type where
+inductive PtZipper : Symbol G.Terminal G.Nonterminal → List G.Token → Type where
   | Top_ptz : PtZipper (.NT (A.start_nt init)) full_word
-  | Cons_ptl_ptz {head_symbolsq : List (Symbol A.Terminal A.Nonterminal)}
-      {wordq : List A.Token} : ParseTreeList head_symbolsq wordq →
-      {head_symbolt : Symbol A.Terminal A.Nonterminal} → {wordt : List A.Token} →
+  | Cons_ptl_ptz {head_symbolsq : List (Symbol G.Terminal G.Nonterminal)}
+      {wordq : List G.Token} : ParseTreeList G head_symbolsq wordq →
+      {head_symbolt : Symbol G.Terminal G.Nonterminal} → {wordt : List G.Token} →
       PtlZipper (head_symbolt :: head_symbolsq) (wordq ++ wordt) →
       PtZipper head_symbolt wordt
-inductive PtlZipper : List (Symbol A.Terminal A.Nonterminal) → List A.Token → Type where
-  | Non_terminal_pt_ptlz {p : A.Production} {word : List A.Token} :
-      PtZipper (.NT (A.prod_lhs p)) word → PtlZipper (A.prod_rhs_rev p) word
-  | Cons_ptl_ptlz {head_symbolsq : List (Symbol A.Terminal A.Nonterminal)}
-      {wordq : List A.Token} {head_symbolt : Symbol A.Terminal A.Nonterminal}
-      {wordt : List A.Token} : ParseTree head_symbolt wordt →
+inductive PtlZipper : List (Symbol G.Terminal G.Nonterminal) → List G.Token → Type where
+  | Non_terminal_pt_ptlz {p : G.Production} {word : List G.Token} :
+      PtZipper (.NT (G.prod_lhs p)) word → PtlZipper (G.prod_rhs_rev p) word
+  | Cons_ptl_ptlz {head_symbolsq : List (Symbol G.Terminal G.Nonterminal)}
+      {wordq : List G.Token} {head_symbolt : Symbol G.Terminal G.Nonterminal}
+      {wordt : List G.Token} : ParseTree G head_symbolt wordt →
       PtlZipper (head_symbolt :: head_symbolsq) (wordq ++ wordt) →
       PtlZipper head_symbolsq wordq
 end
@@ -184,68 +184,68 @@ end
 /-- A dotted parse tree: a zipper plus the sub-tree under the dot, in either a
 reduce or a shift configuration (Coq `pt_dot`). -/
 inductive PtDot : Type where
-  | Reduce_ptd {prod : A.Production} {word : List A.Token} :
-      ParseTreeList (A.prod_rhs_rev prod) word →
-      PtZipper init full_word (.NT (A.prod_lhs prod)) word → PtDot
-  | Shift_ptd (tok : A.Token) {symbolsq : List (Symbol A.Terminal A.Nonterminal)}
-      {wordq : List A.Token} : ParseTreeList symbolsq wordq →
-      PtlZipper init full_word (.T (A.token_term tok) :: symbolsq) (wordq ++ [tok]) → PtDot
+  | Reduce_ptd {prod : G.Production} {word : List G.Token} :
+      ParseTreeList G (G.prod_rhs_rev prod) word →
+      PtZipper init full_word (.NT (G.prod_lhs prod)) word → PtDot
+  | Shift_ptd (tok : G.Token) {symbolsq : List (Symbol G.Terminal G.Nonterminal)}
+      {wordq : List G.Token} : ParseTreeList G symbolsq wordq →
+      PtlZipper init full_word (.T (G.token_term tok) :: symbolsq) (wordq ++ [tok]) → PtDot
 
 /- The semantic value of a dotted parse tree, computed from the zipper part
 (Coq `ptlz_sem` / `ptz_sem`). -/
 mutual
-def ptlzSem : {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
+def ptlzSem : {holeSymbs : List (Symbol G.Terminal G.Nonterminal)} → {holeWord : List G.Token} →
     PtlZipper init full_word holeSymbs holeWord →
-    (∀ B : Type, arrowsRight B (holeSymbs.map A.symbol_semantic_type) → B) →
-    A.symbol_semantic_type (.NT (A.start_nt init))
-  | _, _, .Non_terminal_pt_ptlz (p := prod) ptz, k => ptzSem ptz (k _ (A.prod_action prod))
+    (∀ B : Type, arrowsRight B (holeSymbs.map G.symbol_semantic_type) → B) →
+    G.symbol_semantic_type (.NT (A.start_nt init))
+  | _, _, .Non_terminal_pt_ptlz (p := prod) ptz, k => ptzSem ptz (k _ (G.prod_action prod))
   | _, _, .Cons_ptl_ptlz pt ptlz, k => ptlzSem ptlz (fun _ f => k _ (f (ptSem pt)))
-def ptzSem : {holeSymb : Symbol A.Terminal A.Nonterminal} → {holeWord : List A.Token} →
+def ptzSem : {holeSymb : Symbol G.Terminal G.Nonterminal} → {holeWord : List G.Token} →
     PtZipper init full_word holeSymb holeWord →
-    A.symbol_semantic_type holeSymb → A.symbol_semantic_type (.NT (A.start_nt init))
+    G.symbol_semantic_type holeSymb → G.symbol_semantic_type (.NT (A.start_nt init))
   | _, _, .Top_ptz, sem => sem
   | _, _, .Cons_ptl_ptz ptl ptlz, sem => ptlzSem ptlz (fun _ f => ptlSem ptl (f sem))
 end
 
 /-- The semantic value of a dotted parse tree (Coq `ptd_sem`). -/
-def ptdSem : PtDot init full_word → A.symbol_semantic_type (.NT (A.start_nt init))
-  | .Reduce_ptd (prod := prod) ptl ptz => ptzSem init full_word ptz (ptlSem ptl (A.prod_action prod))
+def ptdSem : PtDot init full_word → G.symbol_semantic_type (.NT (A.start_nt init))
+  | .Reduce_ptd (prod := prod) ptl ptz => ptzSem init full_word ptz (ptlSem ptl (G.prod_action prod))
   | .Shift_ptd tok ptl ptlz =>
-      ptlzSem init full_word ptlz (fun _ f => ptlSem ptl (f (A.token_sem tok)))
+      ptlzSem init full_word ptlz (fun _ f => ptlSem ptl (f (G.token_sem tok)))
 
 /- The buffer left to read at a dotted parse tree (Coq `ptlz_buffer` / `ptz_buffer`). -/
 mutual
-def ptlzBuffer : {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
-    PtlZipper init full_word holeSymbs holeWord → Buffer
+def ptlzBuffer : {holeSymbs : List (Symbol G.Terminal G.Nonterminal)} → {holeWord : List G.Token} →
+    PtlZipper init full_word holeSymbs holeWord → Buffer G
   | _, _, .Non_terminal_pt_ptlz ptz => ptzBuffer ptz
   | _, _, .Cons_ptl_ptlz (wordt := wordt) _ ptlz => wordt ++ₛ ptlzBuffer ptlz
-def ptzBuffer : {holeSymb : Symbol A.Terminal A.Nonterminal} → {holeWord : List A.Token} →
-    PtZipper init full_word holeSymb holeWord → Buffer
+def ptzBuffer : {holeSymb : Symbol G.Terminal G.Nonterminal} → {holeWord : List G.Token} →
+    PtZipper init full_word holeSymb holeWord → Buffer G
   | _, _, .Top_ptz => buffer_end
   | _, _, .Cons_ptl_ptz _ ptlz => ptlzBuffer ptlz
 end
 
 /-- The buffer at a dotted parse tree (Coq `ptd_buffer`). -/
-def ptdBuffer : PtDot init full_word → Buffer
+def ptdBuffer : PtDot init full_word → Buffer G
   | .Reduce_ptd _ ptz => ptzBuffer init full_word buffer_end ptz
   | .Shift_ptd tok _ ptlz => Buf.cons tok (ptlzBuffer init full_word buffer_end ptlz)
 
 /-- The production at the root of a parse-tree-list zipper (Coq `ptlz_prod`). -/
-def ptlzProd : {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
-    PtlZipper init full_word holeSymbs holeWord → A.Production
+def ptlzProd : {holeSymbs : List (Symbol G.Terminal G.Nonterminal)} → {holeWord : List G.Token} →
+    PtlZipper init full_word holeSymbs holeWord → G.Production
   | _, _, .Non_terminal_pt_ptlz (p := prod) _ => prod
   | _, _, .Cons_ptl_ptlz _ ptlz => ptlzProd ptlz
 
 /-- The symbols still to be read in the current production (Coq `ptlz_future`). -/
-def ptlzFuture : {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
-    PtlZipper init full_word holeSymbs holeWord → List (Symbol A.Terminal A.Nonterminal)
+def ptlzFuture : {holeSymbs : List (Symbol G.Terminal G.Nonterminal)} → {holeWord : List G.Token} →
+    PtlZipper init full_word holeSymbs holeWord → List (Symbol G.Terminal G.Nonterminal)
   | _, _, .Non_terminal_pt_ptlz _ => []
   | _, _, .Cons_ptl_ptlz (head_symbolt := s) _ ptlz => s :: ptlzFuture ptlz
 
 /-- The lookahead terminal of a parse-tree-list zipper (Coq `ptlz_lookahead`). -/
-def ptlzLookahead : {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
-    PtlZipper init full_word holeSymbs holeWord → A.Terminal
-  | _, _, .Non_terminal_pt_ptlz ptz => A.token_term (ptzBuffer init full_word buffer_end ptz).head
+def ptlzLookahead : {holeSymbs : List (Symbol G.Terminal G.Nonterminal)} → {holeWord : List G.Token} →
+    PtlZipper init full_word holeSymbs holeWord → G.Terminal
+  | _, _, .Non_terminal_pt_ptlz ptz => G.token_term (ptzBuffer init full_word buffer_end ptz).head
   | _, _, .Cons_ptl_ptlz _ ptlz => ptlzLookahead ptlz
 
 /- A stack is compatible with a parse-tree zipper when it is built from stack
@@ -253,37 +253,37 @@ fragments matching each partially-recognised production in the zipper, with each
 fragment's top state predicting the corresponding item (Coq `ptz_stack_compat` /
 `ptlz_stack_compat`). -/
 mutual
-def ptzStackCompat : {holeSymb : Symbol A.Terminal A.Nonterminal} → {holeWord : List A.Token} →
-    Stack → PtZipper init full_word holeSymb holeWord → Prop
+def ptzStackCompat : {holeSymb : Symbol G.Terminal G.Nonterminal} → {holeWord : List G.Token} →
+    Stack A → PtZipper init full_word holeSymb holeWord → Prop
   | _, _, stk, .Top_ptz => stk = []
   | holeSymb, _, stk, .Cons_ptl_ptz ptl ptlz =>
       ∃ stk0, stateHasFuture (stateOfStack init stk) (ptlzProd init full_word ptlz)
           (holeSymb :: ptlzFuture init full_word ptlz)
           (ptlzLookahead init full_word buffer_end ptlz) ∧
         ptlStackCompat stk0 ptl stk ∧ ptlzStackCompat stk0 ptlz
-def ptlzStackCompat : {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
-    Stack → PtlZipper init full_word holeSymbs holeWord → Prop
+def ptlzStackCompat : {holeSymbs : List (Symbol G.Terminal G.Nonterminal)} → {holeWord : List G.Token} →
+    Stack A → PtlZipper init full_word holeSymbs holeWord → Prop
   | _, _, stk, .Non_terminal_pt_ptlz ptz => ptzStackCompat stk ptz
   | _, _, stk, .Cons_ptl_ptlz _ ptlz => ptlzStackCompat stk ptlz
 end
 
 /-- A stack is compatible with a dotted parse tree (Coq `ptd_stack_compat`). -/
-def ptdStackCompat : PtDot init full_word → Stack → Prop
+def ptdStackCompat : PtDot init full_word → Stack A → Prop
   | .Reduce_ptd (prod := prod) ptl ptz, stk =>
       ∃ stk0, stateHasFuture (stateOfStack init stk) prod []
-          (A.token_term (ptzBuffer init full_word buffer_end ptz).head) ∧
+          (G.token_term (ptzBuffer init full_word buffer_end ptz).head) ∧
         ptlStackCompat stk0 ptl stk ∧ ptzStackCompat init full_word buffer_end stk0 ptz
   | .Shift_ptd tok ptl ptlz, stk =>
       ∃ stk0, stateHasFuture (stateOfStack init stk) (ptlzProd init full_word ptlz)
-          (.T (A.token_term tok) :: ptlzFuture init full_word ptlz)
+          (.T (G.token_term tok) :: ptlzFuture init full_word ptlz)
           (ptlzLookahead init full_word buffer_end ptlz) ∧
         ptlStackCompat stk0 ptl stk ∧ ptlzStackCompat init full_word buffer_end stk0 ptlz
 
 /-- The top of a `Cons_ptl_ptz`-compatible stack predicts the zipper's item
 (Coq `ptz_stack_compat_cons_state_has_future`). -/
-theorem ptz_stack_compat_cons_state_has_future {symbsq : List (Symbol A.Terminal A.Nonterminal)}
-    {wordq : List A.Token} {symbt : Symbol A.Terminal A.Nonterminal} {wordt : List A.Token}
-    (stk : Stack) (ptl : ParseTreeList symbsq wordq)
+theorem ptz_stack_compat_cons_state_has_future {symbsq : List (Symbol G.Terminal G.Nonterminal)}
+    {wordq : List G.Token} {symbt : Symbol G.Terminal G.Nonterminal} {wordt : List G.Token}
+    (stk : Stack A) (ptl : ParseTreeList G symbsq wordq)
     (ptlz : PtlZipper init full_word (symbt :: symbsq) (wordq ++ wordt))
     (h : ptzStackCompat init full_word buffer_end stk (.Cons_ptl_ptz ptl ptlz)) :
     stateHasFuture (stateOfStack init stk) (ptlzProd init full_word ptlz)
@@ -295,10 +295,10 @@ theorem ptz_stack_compat_cons_state_has_future {symbsq : List (Symbol A.Terminal
 /-- The future plus the recognised symbols reverse-append to the production's RHS
 (Coq `ptlz_future_ptlz_prod`). -/
 theorem ptlz_future_ptlz_prod :
-    {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
+    {holeSymbs : List (Symbol G.Terminal G.Nonterminal)} → {holeWord : List G.Token} →
     (ptlz : PtlZipper init full_word holeSymbs holeWord) →
     List.reverseAux (ptlzFuture init full_word ptlz) holeSymbs =
-      A.prod_rhs_rev (ptlzProd init full_word ptlz)
+      G.prod_rhs_rev (ptlzProd init full_word ptlz)
   | _, _, .Non_terminal_pt_ptlz _ => by simp [ptlzFuture, ptlzProd]
   | _, _, .Cons_ptl_ptlz pt ptlz' => by
       simp only [ptlzFuture, ptlzProd, List.reverseAux]
@@ -306,14 +306,14 @@ theorem ptlz_future_ptlz_prod :
 
 /-- The lookahead of a zipper is in the first set of its future, or the future is
 nullable and the lookahead equals the recorded lookahead (Coq `ptlz_future_first`). -/
-theorem ptlz_future_first (hc : complete) :
-    {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
+theorem ptlz_future_first (hc : complete A) :
+    {symbs : List (Symbol G.Terminal G.Nonterminal)} → {word : List G.Token} →
     (ptlz : PtlZipper init full_word symbs word) →
-    A.token_term (ptlzBuffer init full_word buffer_end ptlz).head ∈
-        firstWordSet (ptlzFuture init full_word ptlz) ∨
-    (A.token_term (ptlzBuffer init full_word buffer_end ptlz).head =
+    G.token_term (ptlzBuffer init full_word buffer_end ptlz).head ∈
+        firstWordSet A (ptlzFuture init full_word ptlz) ∨
+    (G.token_term (ptlzBuffer init full_word buffer_end ptlz).head =
         ptlzLookahead init full_word buffer_end ptlz ∧
-      nullableWord (ptlzFuture init full_word ptlz) = true)
+      nullableWord A (ptlzFuture init full_word ptlz) = true)
   | _, _, .Non_terminal_pt_ptlz ptz => by
       refine Or.inr ⟨?_, ?_⟩
       · simp [ptlzBuffer, ptlzLookahead]
@@ -337,9 +337,9 @@ theorem ptlz_future_first (hc : complete) :
           rw [Buf.cons_append_stream]
           left
           have hfirst := first_correct hc pt
-          show A.token_term c ∈ firstWordSet (s :: ptlzFuture init full_word ptlz')
+          show G.token_term c ∈ firstWordSet A (s :: ptlzFuture init full_word ptlz')
           simp only [firstWordSet]
-          by_cases hn : nullableSymb s = true
+          by_cases hn : nullableSymb A s = true
           · simp only [hn, if_true]
             exact List.mem_append.2 (Or.inl hfirst)
           · simp only [Bool.not_eq_true] at hn
@@ -351,19 +351,19 @@ theorem ptlz_future_first (hc : complete) :
 
 /-- A `Type`-valued witness that a parse-tree list is non-nil (mirrors Coq's
 `is_notnil`, but in `Type` since Lean's `Option` cannot wrap a `Prop`). -/
-abbrev NonNilT (symbs : List (Symbol A.Terminal A.Nonterminal)) : Type :=
+abbrev NonNilT (symbs : List (Symbol G.Terminal G.Nonterminal)) : Type :=
   match symbs with | [] => Empty | _ => Unit
 
-def nonNilProof : {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
-    ParseTreeList symbs word → Option (NonNilT symbs)
+def nonNilProof : {symbs : List (Symbol G.Terminal G.Nonterminal)} → {word : List G.Token} →
+    ParseTreeList G symbs word → Option (NonNilT symbs)
   | _, _, .Nil_ptl => none
   | _, _, .Cons_ptl _ _ => some Unit.unit
 
 /- Build the next dotted parse tree from a parse tree under the dot (Coq
 `build_pt_dot_from_pt` / `build_pt_dot_from_pt_rec`). -/
 mutual
-def buildPtDotFromPt : {symb : Symbol A.Terminal A.Nonterminal} → {word : List A.Token} →
-    ParseTree symb word → PtZipper init full_word symb word → PtDot init full_word
+def buildPtDotFromPt : {symb : Symbol G.Terminal G.Nonterminal} → {word : List G.Token} →
+    ParseTree G symb word → PtZipper init full_word symb word → PtDot init full_word
   | _, _, .Terminal_pt tok, ptz =>
       match ptz with
       | .Cons_ptl_ptz ptl ptlz => .Shift_ptd tok ptl ptlz
@@ -371,8 +371,8 @@ def buildPtDotFromPt : {symb : Symbol A.Terminal A.Nonterminal} → {word : List
       match nonNilProof ptl with
       | none => .Reduce_ptd ptl ptz
       | some H => buildPtDotFromPtRec ptl H (.Non_terminal_pt_ptlz ptz)
-def buildPtDotFromPtRec : {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
-    (ptl : ParseTreeList symbs word) → NonNilT symbs →
+def buildPtDotFromPtRec : {symbs : List (Symbol G.Terminal G.Nonterminal)} → {word : List G.Token} →
+    (ptl : ParseTreeList G symbs word) → NonNilT symbs →
     PtlZipper init full_word symbs word → PtDot init full_word
   | _, _, .Nil_ptl, hsymbs, _ => hsymbs.elim
   | _, _, .Cons_ptl ptl' pt, _, ptlz =>
@@ -383,16 +383,16 @@ end
 
 /-- Build the next dotted parse tree from a completed parse-tree list under a
 zipper (Coq `build_pt_dot_from_ptl`). -/
-def buildPtDotFromPtl : {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
-    ParseTreeList symbs word → PtlZipper init full_word symbs word → PtDot init full_word
+def buildPtDotFromPtl : {symbs : List (Symbol G.Terminal G.Nonterminal)} → {word : List G.Token} →
+    ParseTreeList G symbs word → PtlZipper init full_word symbs word → PtDot init full_word
   | _, _, ptl, .Non_terminal_pt_ptlz ptz => .Reduce_ptd ptl ptz
   | _, _, ptl, .Cons_ptl_ptlz pt ptlz => buildPtDotFromPt init full_word pt (.Cons_ptl_ptz ptl ptlz)
 
 /-- The reduce-step continuation, over a *generic* nonterminal so that `cases`
 on the zipper works (the index is a variable). Splits on whether the zipper is
 the top (parsing done) or nested. -/
-def nextPtdAux {nt : A.Nonterminal} {word : List A.Token}
-    (pt : ParseTree (.NT nt) word) (ptz : PtZipper init full_word (.NT nt) word) :
+def nextPtdAux {nt : G.Nonterminal} {word : List G.Token}
+    (pt : ParseTree G (.NT nt) word) (ptz : PtZipper init full_word (.NT nt) word) :
     Option (PtDot init full_word) :=
   match ptz, pt with
   | .Top_ptz, _ => none
@@ -418,8 +418,8 @@ def nextPtdIter : PtDot init full_word → Nat → Option (PtDot init full_word)
 /- The dotted parse tree built from a parse tree has the same semantic value
 (Coq `sem_build_from_pt` / `sem_build_from_pt_rec`). -/
 mutual
-theorem sem_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} → {word : List A.Token} →
-    (pt : ParseTree symb word) → (ptz : PtZipper init full_word symb word) →
+theorem sem_build_from_pt : {symb : Symbol G.Terminal G.Nonterminal} → {word : List G.Token} →
+    (pt : ParseTree G symb word) → (ptz : PtZipper init full_word symb word) →
     ptzSem init full_word ptz (ptSem pt) =
       ptdSem init full_word (buildPtDotFromPt init full_word pt ptz)
   | _, _, .Terminal_pt tok, ptz => by
@@ -433,8 +433,8 @@ theorem sem_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} → {word :
       | some H =>
         rw [← sem_build_from_pt_rec ptl H (.Non_terminal_pt_ptlz ptz)]
         simp only [ptlzSem]
-theorem sem_build_from_pt_rec : {symbs : List (Symbol A.Terminal A.Nonterminal)} →
-    {word : List A.Token} → (ptl : ParseTreeList symbs word) → (H : NonNilT symbs) →
+theorem sem_build_from_pt_rec : {symbs : List (Symbol G.Terminal G.Nonterminal)} →
+    {word : List G.Token} → (ptl : ParseTreeList G symbs word) → (H : NonNilT symbs) →
     (ptlz : PtlZipper init full_word symbs word) →
     ptlzSem init full_word ptlz (fun _ f => ptlSem ptl f) =
       ptdSem init full_word (buildPtDotFromPtRec init full_word ptl H ptlz)
@@ -453,8 +453,8 @@ end
 
 /-- The dotted parse tree built from a completed list has the same semantic value
 (Coq `sem_build_from_ptl`). -/
-theorem sem_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal)} {word : List A.Token}
-    (ptl : ParseTreeList symbs word) (ptlz : PtlZipper init full_word symbs word) :
+theorem sem_build_from_ptl {symbs : List (Symbol G.Terminal G.Nonterminal)} {word : List G.Token}
+    (ptl : ParseTreeList G symbs word) (ptlz : PtlZipper init full_word symbs word) :
     ptlzSem init full_word ptlz (fun _ f => ptlSem ptl f) =
       ptdSem init full_word (buildPtDotFromPtl init full_word ptl ptlz) := by
   cases ptlz with
@@ -465,8 +465,8 @@ theorem sem_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal)} {wor
     simp only [ptzSem, ptlzSem]
 
 /-- `nextPtdAux` preserves the semantic value. -/
-theorem sem_nextPtdAux {nt : A.Nonterminal} {word : List A.Token}
-    (pt : ParseTree (.NT nt) word) (ptz : PtZipper init full_word (.NT nt) word) :
+theorem sem_nextPtdAux {nt : G.Nonterminal} {word : List G.Token}
+    (pt : ParseTree G (.NT nt) word) (ptz : PtZipper init full_word (.NT nt) word) :
     match nextPtdAux init full_word pt ptz with
     | none => True
     | some ptd' => ptzSem init full_word ptz (ptSem pt) = ptdSem init full_word ptd' := by
@@ -517,8 +517,8 @@ theorem sem_next_ptd_iter (ptd : PtDot init full_word) (logNSteps : Nat) :
 /-! ### `build_pt_dot` preserves the remaining buffer -/
 
 /-- If `nonNilProof` says nil, the word is empty. -/
-theorem nonNilProof_none {symbs : List (Symbol A.Terminal A.Nonterminal)} {word : List A.Token}
-    (ptl : ParseTreeList symbs word) (h : nonNilProof ptl = none) : word = [] := by
+theorem nonNilProof_none {symbs : List (Symbol G.Terminal G.Nonterminal)} {word : List G.Token}
+    (ptl : ParseTreeList G symbs word) (h : nonNilProof ptl = none) : word = [] := by
   cases ptl with
   | Nil_ptl => rfl
   | Cons_ptl _ _ => simp [nonNilProof] at h
@@ -526,8 +526,8 @@ theorem nonNilProof_none {symbs : List (Symbol A.Terminal A.Nonterminal)} {word 
 /- The buffer of the dotted parse tree built from a parse tree is the recognised
 word followed by the zipper's buffer (Coq `ptd_buffer_build_from_pt`). -/
 mutual
-theorem ptd_buffer_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} →
-    {word : List A.Token} → (pt : ParseTree symb word) → (ptz : PtZipper init full_word symb word) →
+theorem ptd_buffer_build_from_pt : {symb : Symbol G.Terminal G.Nonterminal} →
+    {word : List G.Token} → (pt : ParseTree G symb word) → (ptz : PtZipper init full_word symb word) →
     word ++ₛ ptzBuffer init full_word buffer_end ptz =
       ptdBuffer init full_word buffer_end (buildPtDotFromPt init full_word pt ptz)
   | _, _, .Terminal_pt tok, ptz => by
@@ -545,8 +545,8 @@ theorem ptd_buffer_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} →
       | some H =>
         rw [← ptd_buffer_build_from_pt_rec ptl H (.Non_terminal_pt_ptlz ptz)]
         simp only [ptlzBuffer]
-theorem ptd_buffer_build_from_pt_rec : {symbs : List (Symbol A.Terminal A.Nonterminal)} →
-    {word : List A.Token} → (ptl : ParseTreeList symbs word) → (H : NonNilT symbs) →
+theorem ptd_buffer_build_from_pt_rec : {symbs : List (Symbol G.Terminal G.Nonterminal)} →
+    {word : List G.Token} → (ptl : ParseTreeList G symbs word) → (H : NonNilT symbs) →
     (ptlz : PtlZipper init full_word symbs word) →
     word ++ₛ ptlzBuffer init full_word buffer_end ptlz =
       ptdBuffer init full_word buffer_end (buildPtDotFromPtRec init full_word ptl H ptlz)
@@ -566,8 +566,8 @@ end
 
 /-- The buffer of the dotted parse tree built from a completed list
 (Coq `ptd_buffer_build_from_ptl`). -/
-theorem ptd_buffer_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal)}
-    {word : List A.Token} (ptl : ParseTreeList symbs word)
+theorem ptd_buffer_build_from_ptl {symbs : List (Symbol G.Terminal G.Nonterminal)}
+    {word : List G.Token} (ptl : ParseTreeList G symbs word)
     (ptlz : PtlZipper init full_word symbs word) :
     ptlzBuffer init full_word buffer_end ptlz =
       ptdBuffer init full_word buffer_end (buildPtDotFromPtl init full_word ptl ptlz) := by
@@ -584,12 +584,12 @@ theorem ptd_buffer_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal
 production for `nt`), the top state predicts `prod` at the dot's start. This is
 the heart of `ptd_stack_compat_build_from_pt`'s non-terminal case; phrased over a
 generic `nt` so the zipper can be `cases`d (Coq's `remember`/`destruct` step). -/
-theorem stateHasFuture_of_ptzStackCompat (hc : complete) {nt : A.Nonterminal}
-    {word : List A.Token} (ptz : PtZipper init full_word (.NT nt) word) (stk : Stack)
-    (prod : A.Production) (hprod : A.prod_lhs prod = nt)
+theorem stateHasFuture_of_ptzStackCompat (hc : complete A) {nt : G.Nonterminal}
+    {word : List G.Token} (ptz : PtZipper init full_word (.NT nt) word) (stk : Stack A)
+    (prod : G.Production) (hprod : G.prod_lhs prod = nt)
     (Hstk : ptzStackCompat init full_word buffer_end stk ptz) :
     stateHasFuture (stateOfStack init stk) prod (futureOfProd prod 0)
-      (A.token_term (ptzBuffer init full_word buffer_end ptz).head) := by
+      (G.token_term (ptzBuffer init full_word buffer_end ptz).head) := by
   cases ptz with
   | Top_ptz =>
     simp only [ptzStackCompat] at Hstk
@@ -607,16 +607,16 @@ theorem stateHasFuture_of_ptzStackCompat (hc : complete) {nt : A.Nonterminal}
     · rw [he]; rw [if_pos hnu] at hnull; exact hnull
 
 /-- If `nonNilProof` says nil, the symbol list is empty. -/
-theorem nonNilProof_none_symbs {symbs : List (Symbol A.Terminal A.Nonterminal)}
-    {word : List A.Token} (ptl : ParseTreeList symbs word) (h : nonNilProof ptl = none) :
+theorem nonNilProof_none_symbs {symbs : List (Symbol G.Terminal G.Nonterminal)}
+    {word : List G.Token} (ptl : ParseTreeList G symbs word) (h : nonNilProof ptl = none) :
     symbs = [] := by
   cases ptl with
   | Nil_ptl => rfl
   | Cons_ptl _ _ => simp [nonNilProof] at h
 
 /-- A nil parse-tree list is stack-compatible with any stack (reflexively). -/
-theorem ptlStackCompat_nil {symbs : List (Symbol A.Terminal A.Nonterminal)} {word : List A.Token}
-    (ptl : ParseTreeList symbs word) (stk0 : Stack) (h : nonNilProof ptl = none) :
+theorem ptlStackCompat_nil {symbs : List (Symbol G.Terminal G.Nonterminal)} {word : List G.Token}
+    (ptl : ParseTreeList G symbs word) (stk0 : Stack A) (h : nonNilProof ptl = none) :
     ptlStackCompat stk0 ptl stk0 := by
   cases ptl with
   | Nil_ptl => simp only [ptlStackCompat]
@@ -624,8 +624,8 @@ theorem ptlStackCompat_nil {symbs : List (Symbol A.Terminal A.Nonterminal)} {wor
 
 /-- `futureOfProd` of a zipper's production at the start equals the recognised
 symbols (reversed) followed by the future. -/
-theorem futureOfProd_ptlzProd {symbs : List (Symbol A.Terminal A.Nonterminal)}
-    {word : List A.Token} (ptlz : PtlZipper init full_word symbs word) :
+theorem futureOfProd_ptlzProd {symbs : List (Symbol G.Terminal G.Nonterminal)}
+    {word : List G.Token} (ptlz : PtlZipper init full_word symbs word) :
     futureOfProd (ptlzProd init full_word ptlz) 0 = symbs.reverse ++ ptlzFuture init full_word ptlz := by
   simp only [futureOfProd, List.drop_zero]
   rw [← ptlz_future_ptlz_prod init full_word ptlz, List.reverseAux_eq]
@@ -634,9 +634,9 @@ theorem futureOfProd_ptlzProd {symbs : List (Symbol A.Terminal A.Nonterminal)}
 /- The dotted parse tree built from a parse tree is stack-compatible (Coq
 `ptd_stack_compat_build_from_pt` / `ptd_stack_compat_build_from_pt_rec`). -/
 mutual
-theorem ptd_stack_compat_build_from_pt (hc : complete) :
-    {symb : Symbol A.Terminal A.Nonterminal} → {word : List A.Token} →
-    (pt : ParseTree symb word) → (ptz : PtZipper init full_word symb word) → (stk : Stack) →
+theorem ptd_stack_compat_build_from_pt (hc : complete A) :
+    {symb : Symbol G.Terminal G.Nonterminal} → {word : List G.Token} →
+    (pt : ParseTree G symb word) → (ptz : PtZipper init full_word symb word) → (stk : Stack A) →
     ptzStackCompat init full_word buffer_end stk ptz →
     ptdStackCompat init full_word buffer_end (buildPtDotFromPt init full_word pt ptz) stk
   | _, _, .Terminal_pt _, ptz, stk, Hstk => by
@@ -655,10 +655,10 @@ theorem ptd_stack_compat_build_from_pt (hc : complete) :
         exact ptd_stack_compat_build_from_pt_rec hc ptl H (.Non_terminal_pt_ptlz ptz) stk
           (by simpa only [ptlzStackCompat] using Hstk)
           (by simpa only [ptlzProd, ptlzLookahead] using Hassert)
-theorem ptd_stack_compat_build_from_pt_rec (hc : complete) :
-    {symbs : List (Symbol A.Terminal A.Nonterminal)} → {word : List A.Token} →
-    (ptl : ParseTreeList symbs word) → (H : NonNilT symbs) →
-    (ptlz : PtlZipper init full_word symbs word) → (stk : Stack) →
+theorem ptd_stack_compat_build_from_pt_rec (hc : complete A) :
+    {symbs : List (Symbol G.Terminal G.Nonterminal)} → {word : List G.Token} →
+    (ptl : ParseTreeList G symbs word) → (H : NonNilT symbs) →
+    (ptlz : PtlZipper init full_word symbs word) → (stk : Stack A) →
     ptlzStackCompat init full_word buffer_end stk ptlz →
     stateHasFuture (stateOfStack init stk) (ptlzProd init full_word ptlz)
       (futureOfProd (ptlzProd init full_word ptlz) 0) (ptlzLookahead init full_word buffer_end ptlz) →
@@ -682,10 +682,10 @@ end
 
 /-- The dotted parse tree built from a completed list is stack-compatible (Coq
 `ptd_stack_compat_build_from_ptl`). -/
-theorem ptd_stack_compat_build_from_ptl (hc : complete)
-    {symbs : List (Symbol A.Terminal A.Nonterminal)} {word : List A.Token}
-    (ptl : ParseTreeList symbs word) (ptlz : PtlZipper init full_word symbs word)
-    (stk stk0 : Stack) (Hstk0 : ptlzStackCompat init full_word buffer_end stk0 ptlz)
+theorem ptd_stack_compat_build_from_ptl (hc : complete A)
+    {symbs : List (Symbol G.Terminal G.Nonterminal)} {word : List G.Token}
+    (ptl : ParseTreeList G symbs word) (ptlz : PtlZipper init full_word symbs word)
+    (stk stk0 : Stack A) (Hstk0 : ptlzStackCompat init full_word buffer_end stk0 ptlz)
     (Hstk : ptlStackCompat stk0 ptl stk)
     (Hfut : stateHasFuture (stateOfStack init stk) (ptlzProd init full_word ptlz)
       (ptlzFuture init full_word ptlz) (ptlzLookahead init full_word buffer_end ptlz)) :
@@ -709,11 +709,11 @@ theorem ptd_stack_compat_build_from_ptl (hc : complete)
 /- The number of parser actions left before completion (Coq `ptlz_cost` /
 `ptz_cost`). -/
 mutual
-def ptlzCost : {holeSymbs : List (Symbol A.Terminal A.Nonterminal)} → {holeWord : List A.Token} →
+def ptlzCost : {holeSymbs : List (Symbol G.Terminal G.Nonterminal)} → {holeWord : List G.Token} →
     PtlZipper init full_word holeSymbs holeWord → Nat
   | _, _, .Non_terminal_pt_ptlz ptz => ptzCost ptz
   | _, _, .Cons_ptl_ptlz pt ptlz' => ptSize pt + ptlzCost ptlz'
-def ptzCost : {holeSymb : Symbol A.Terminal A.Nonterminal} → {holeWord : List A.Token} →
+def ptzCost : {holeSymb : Symbol G.Terminal G.Nonterminal} → {holeWord : List G.Token} →
     PtZipper init full_word holeSymb holeWord → Nat
   | _, _, .Top_ptz => 0
   | _, _, .Cons_ptl_ptz _ ptlz' => 1 + ptlzCost ptlz'
@@ -725,8 +725,8 @@ def ptdCost : PtDot init full_word → Nat
   | .Shift_ptd _ _ ptlz => 1 + ptlzCost init full_word ptlz
 
 /-- If `nonNilProof` says nil, the list has size zero. -/
-theorem nonNilProof_none_size {symbs : List (Symbol A.Terminal A.Nonterminal)}
-    {word : List A.Token} (ptl : ParseTreeList symbs word) (h : nonNilProof ptl = none) :
+theorem nonNilProof_none_size {symbs : List (Symbol G.Terminal G.Nonterminal)}
+    {word : List G.Token} (ptl : ParseTreeList G symbs word) (h : nonNilProof ptl = none) :
     ptlSize ptl = 0 := by
   cases ptl with
   | Nil_ptl => rfl
@@ -735,8 +735,8 @@ theorem nonNilProof_none_size {symbs : List (Symbol A.Terminal A.Nonterminal)}
 /- Building a dotted parse tree from a parse tree accounts for one extra action
 (Coq `ptd_cost_build_from_pt` / `ptd_cost_build_from_pt_rec`). -/
 mutual
-theorem ptd_cost_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} →
-    {word : List A.Token} → (pt : ParseTree symb word) → (ptz : PtZipper init full_word symb word) →
+theorem ptd_cost_build_from_pt : {symb : Symbol G.Terminal G.Nonterminal} →
+    {word : List G.Token} → (pt : ParseTree G symb word) → (ptz : PtZipper init full_word symb word) →
     ptSize pt + ptzCost init full_word ptz =
       ptdCost init full_word (buildPtDotFromPt init full_word pt ptz) + 1
   | _, _, .Terminal_pt _, ptz => by
@@ -752,8 +752,8 @@ theorem ptd_cost_build_from_pt : {symb : Symbol A.Terminal A.Nonterminal} →
       | some H =>
         rw [← ptd_cost_build_from_pt_rec ptl H (.Non_terminal_pt_ptlz ptz)]
         simp only [ptlzCost]; omega
-theorem ptd_cost_build_from_pt_rec : {symbs : List (Symbol A.Terminal A.Nonterminal)} →
-    {word : List A.Token} → (ptl : ParseTreeList symbs word) → (H : NonNilT symbs) →
+theorem ptd_cost_build_from_pt_rec : {symbs : List (Symbol G.Terminal G.Nonterminal)} →
+    {word : List G.Token} → (ptl : ParseTreeList G symbs word) → (H : NonNilT symbs) →
     (ptlz : PtlZipper init full_word symbs word) →
     ptlSize ptl + ptlzCost init full_word ptlz =
       ptdCost init full_word (buildPtDotFromPtRec init full_word ptl H ptlz)
@@ -773,8 +773,8 @@ end
 
 /-- The cost of the dotted parse tree built from a completed list
 (Coq `ptd_cost_build_from_ptl`). -/
-theorem ptd_cost_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal)}
-    {word : List A.Token} (ptl : ParseTreeList symbs word)
+theorem ptd_cost_build_from_ptl {symbs : List (Symbol G.Terminal G.Nonterminal)}
+    {word : List G.Token} (ptl : ParseTreeList G symbs word)
     (ptlz : PtlZipper init full_word symbs word) :
     ptlzCost init full_word ptlz = ptdCost init full_word (buildPtDotFromPtl init full_word ptl ptlz) := by
   cases ptlz with
@@ -786,8 +786,8 @@ theorem ptd_cost_build_from_ptl {symbs : List (Symbol A.Terminal A.Nonterminal)}
     omega
 
 /-- `nextPtdAux` cost accounting. -/
-theorem cost_nextPtdAux {nt : A.Nonterminal} {word : List A.Token}
-    (pt : ParseTree (.NT nt) word) (ptz : PtZipper init full_word (.NT nt) word) :
+theorem cost_nextPtdAux {nt : G.Nonterminal} {word : List G.Token}
+    (pt : ParseTree G (.NT nt) word) (ptz : PtZipper init full_word (.NT nt) word) :
     match nextPtdAux init full_word pt ptz with
     | none => ptzCost init full_word ptz = 0
     | some ptd' => ptzCost init full_word ptz = ptdCost init full_word ptd' + 1 := by
@@ -847,20 +847,20 @@ on whether the goto for the produced nonterminal succeeds. Proof irrelevance
 
 /-- If popping `prod`'s RHS yields `(stk0, sem)` and the goto on `prod_lhs prod`
 succeeds, `reduceStep` makes progress, pushing the goto target. -/
-theorem reduceStep_progress_eq (stk : Stack) (prod : A.Production) (buf : Buffer)
+theorem reduceStep_progress_eq (stk : Stack A) (prod : G.Production) (buf : Buffer G)
     (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk)
-    (stk0 : Stack) (sem : A.symbol_semantic_type (.NT (A.prod_lhs prod)))
+    (stk0 : Stack A) (sem : G.symbol_semantic_type (.NT (G.prod_lhs prod)))
     (stateNew : A.NonInitState)
-    (e : Symbol.NT (A.prod_lhs prod) = A.last_symb_of_non_init_state stateNew)
-    (hpop : pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
-      (A.prod_action prod) = (stk0, sem))
-    (hgoto : A.goto_table (stateOfStack init stk0) (A.prod_lhs prod) = some ⟨stateNew, e⟩) :
+    (e : Symbol.NT (G.prod_lhs prod) = A.last_symb_of_non_init_state stateNew)
+    (hpop : pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (G.prod_action prod) = (stk0, sem))
+    (hgoto : A.goto_table (stateOfStack init stk0) (G.prod_lhs prod) = some ⟨stateNew, e⟩) :
     reduceStep init stk prod buf Hval Hi =
-      .Progress (⟨stateNew, cast (congrArg A.symbol_semantic_type e) sem⟩ :: stk0) buf := by
+      .Progress (⟨stateNew, cast (congrArg G.symbol_semantic_type e) sem⟩ :: stk0) buf := by
   unfold reduceStep
   simp only [hpop]
-  have h1 : (pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
-      (A.prod_action prod)).1 = stk0 := congrArg Prod.fst hpop
+  have h1 : (pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (G.prod_action prod)).1 = stk0 := congrArg Prod.fst hpop
   split
   · rename_i sn e' hg
     rw [h1, hgoto] at hg
@@ -874,19 +874,19 @@ theorem reduceStep_progress_eq (stk : Stack) (prod : A.Production) (buf : Buffer
 
 /-- If popping `prod`'s RHS yields `(stk0, sem)` and the goto on `prod_lhs prod`
 fails, `reduceStep` accepts with the (cast) popped value. -/
-theorem reduceStep_accept_eq (stk : Stack) (prod : A.Production) (buf : Buffer)
+theorem reduceStep_accept_eq (stk : Stack A) (prod : G.Production) (buf : Buffer G)
     (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk)
-    (stk0 : Stack) (sem : A.symbol_semantic_type (.NT (A.prod_lhs prod)))
-    (e2 : A.prod_lhs prod = A.start_nt init)
-    (hpop : pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
-      (A.prod_action prod) = (stk0, sem))
-    (hgoto : A.goto_table (stateOfStack init stk0) (A.prod_lhs prod) = none) :
+    (stk0 : Stack A) (sem : G.symbol_semantic_type (.NT (G.prod_lhs prod)))
+    (e2 : G.prod_lhs prod = A.start_nt init)
+    (hpop : pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (G.prod_action prod) = (stk0, sem))
+    (hgoto : A.goto_table (stateOfStack init stk0) (G.prod_lhs prod) = none) :
     reduceStep init stk prod buf Hval Hi =
-      .Accept (cast (congrArg (fun nt => A.symbol_semantic_type (Symbol.NT nt)) e2) sem) buf := by
+      .Accept (cast (congrArg (fun nt => G.symbol_semantic_type (Symbol.NT nt)) e2) sem) buf := by
   unfold reduceStep
   simp only [hpop]
-  have h1 : (pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
-      (A.prod_action prod)).1 = stk0 := congrArg Prod.fst hpop
+  have h1 : (pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (G.prod_action prod)).1 = stk0 := congrArg Prod.fst hpop
   split
   · rename_i sn e' hg
     rw [h1, hgoto] at hg
@@ -896,22 +896,22 @@ theorem reduceStep_accept_eq (stk : Stack) (prod : A.Production) (buf : Buffer)
 /-! ### `reduce_step` follows `next_ptd` -/
 
 /-- Transporting a parse tree along a nonterminal equality casts its semantics. -/
-theorem ptSem_recNT {a b : A.Nonterminal} (h : a = b) {w : List A.Token}
-    (x : ParseTree (.NT a) w) :
-    ptSem (h ▸ x) = cast (congrArg (fun n => A.symbol_semantic_type (.NT n)) h) (ptSem x) := by
+theorem ptSem_recNT {a b : G.Nonterminal} (h : a = b) {w : List G.Token}
+    (x : ParseTree G (.NT a) w) :
+    ptSem (h ▸ x) = cast (congrArg (fun n => G.symbol_semantic_type (.NT n)) h) (ptSem x) := by
   subst h; rfl
 
 /-- Generic-nonterminal core of `reduce_step_next_ptd`: with the produced
 nonterminal abstracted to a variable `nt`, `cases ptz` is legal. -/
-theorem reduceStep_next_ptdAux (hc : complete) {nt : A.Nonterminal} {word : List A.Token}
-    (prod : A.Production) (hnt : A.prod_lhs prod = nt)
-    (ptl : ParseTreeList (A.prod_rhs_rev prod) word)
+theorem reduceStep_next_ptdAux (hc : complete A) {nt : G.Nonterminal} {word : List G.Token}
+    (prod : G.Production) (hnt : G.prod_lhs prod = nt)
+    (ptl : ParseTreeList G (G.prod_rhs_rev prod) word)
     (ptz : PtZipper init full_word (.NT nt) word)
-    (stk stk0 : Stack)
+    (stk stk0 : Stack A)
     (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk)
     (Hstk : ptlStackCompat stk0 ptl stk)
     (Hstk0 : ptzStackCompat init full_word buffer_end stk0 ptz)
-    (pt : ParseTree (.NT nt) word)
+    (pt : ParseTree G (.NT nt) word)
     (hpt : pt = hnt ▸ ParseTree.Non_terminal_pt prod ptl) :
     match nextPtdAux init full_word pt ptz with
     | none =>
@@ -921,23 +921,23 @@ theorem reduceStep_next_ptdAux (hc : complete) {nt : A.Nonterminal} {word : List
       ∃ stk', reduceStep init stk prod (ptzBuffer init full_word buffer_end ptz) Hval Hi =
         .Progress stk' (ptdBuffer init full_word buffer_end ptd) ∧
         ptdStackCompat init full_word buffer_end ptd stk' := by
-  have hpop : pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
-      (A.prod_action prod) = (stk0, ptlSem ptl (A.prod_action prod)) :=
-    pop_eq_of_popSpec (pop_stack_compat_pop_spec ptl stk stk0 (A.prod_action prod) Hstk) _
+  have hpop : pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (G.prod_action prod) = (stk0, ptlSem ptl (G.prod_action prod)) :=
+    pop_eq_of_popSpec (pop_stack_compat_pop_spec ptl stk stk0 (G.prod_action prod) Hstk) _
   cases ptz with
   | Top_ptz =>
     simp only [nextPtdAux, ptzBuffer, ptzSem]
     simp only [ptzStackCompat] at Hstk0
     subst Hstk0
-    have hgoto : A.goto_table (stateOfStack init []) (A.prod_lhs prod) = none := by
-      show A.goto_table (.Init init) (A.prod_lhs prod) = none
+    have hgoto : A.goto_table (stateOfStack init []) (G.prod_lhs prod) = none := by
+      show A.goto_table (.Init init) (G.prod_lhs prod) = none
       rw [hnt]
       have hsg := startGoto_of_complete hc init
       cases hg2 : A.goto_table (.Init init) (A.start_nt init) with
       | none => rfl
       | some v => rw [hg2] at hsg; exact hsg.elim
     rw [reduceStep_accept_eq init stk prod buffer_end Hval Hi []
-      (ptlSem ptl (A.prod_action prod)) hnt hpop hgoto]
+      (ptlSem ptl (G.prod_action prod)) hnt hpop hgoto]
     rw [hpt, ptSem_recNT]
     simp only [ptSem]
   | Cons_ptl_ptz ptl' ptlz =>
@@ -947,18 +947,18 @@ theorem reduceStep_next_ptdAux (hc : complete) {nt : A.Nonterminal} {word : List
     simp only [ptzStackCompat] at Hstk0
     obtain ⟨stk0', Hfut, Hstk', Hstk0'⟩ := Hstk0
     have Hgoto := nonTerminalGoto_of_complete hc (stateOfStack init stk0)
-      (ptlzProd init full_word ptlz) (Symbol.NT (A.prod_lhs prod) :: ptlzFuture init full_word ptlz)
+      (ptlzProd init full_word ptlz) (Symbol.NT (G.prod_lhs prod) :: ptlzFuture init full_word ptlz)
       (ptlzLookahead init full_word buffer_end ptlz) Hfut
     dsimp only at Hgoto
-    cases hg : A.goto_table (stateOfStack init stk0) (A.prod_lhs prod) with
+    cases hg : A.goto_table (stateOfStack init stk0) (G.prod_lhs prod) with
     | none => rw [hg] at Hgoto; exact Hgoto.elim
     | some v =>
       obtain ⟨stateNew, e⟩ := v
       rw [hg] at Hgoto
-      refine ⟨⟨stateNew, cast (congrArg A.symbol_semantic_type e)
-        (ptlSem ptl (A.prod_action prod))⟩ :: stk0, ?_, ?_⟩
+      refine ⟨⟨stateNew, cast (congrArg G.symbol_semantic_type e)
+        (ptlSem ptl (G.prod_action prod))⟩ :: stk0, ?_, ?_⟩
       · rw [reduceStep_progress_eq init stk prod (ptlzBuffer init full_word buffer_end ptlz) Hval Hi
-          stk0 (ptlSem ptl (A.prod_action prod)) stateNew e hpop hg]
+          stk0 (ptlSem ptl (G.prod_action prod)) stateNew e hpop hg]
         rw [ptd_buffer_build_from_ptl init full_word buffer_end
           (ParseTreeList.Cons_ptl ptl' (.Non_terminal_pt prod ptl)) ptlz]
       · refine ptd_stack_compat_build_from_ptl init full_word buffer_end hc
@@ -968,10 +968,10 @@ theorem reduceStep_next_ptdAux (hc : complete) {nt : A.Nonterminal} {word : List
         simp only [ptSem]; rfl
 
 /-- `reduce_step` follows `next_ptd` (Coq `reduce_step_next_ptd`). -/
-theorem reduceStep_next_ptd (hc : complete) {prod : A.Production} {word : List A.Token}
-    (ptl : ParseTreeList (A.prod_rhs_rev prod) word)
-    (ptz : PtZipper init full_word (.NT (A.prod_lhs prod)) word)
-    (stk : Stack) (Hval : validForReduce (stateOfStack init stk) prod)
+theorem reduceStep_next_ptd (hc : complete A) {prod : G.Production} {word : List G.Token}
+    (ptl : ParseTreeList G (G.prod_rhs_rev prod) word)
+    (ptz : PtZipper init full_word (.NT (G.prod_lhs prod)) word)
+    (stk : Stack A) (Hval : validForReduce (stateOfStack init stk) prod)
     (Hi : StackInvariant init stk)
     (Hstk : ptdStackCompat init full_word buffer_end (.Reduce_ptd ptl ptz) stk) :
     match nextPtd init full_word (.Reduce_ptd ptl ptz) with
@@ -992,8 +992,8 @@ theorem reduceStep_next_ptd (hc : complete) {prod : A.Production} {word : List A
 /-! ### Evaluating `step` -/
 
 /-- `step` reduces to `reduceStep` when the state default-reduces. -/
-theorem step_eq_reduceStep_default (hsafe : safe) (stk : Stack) (buffer : Buffer)
-    (Hi : StackInvariant init stk) (prod : A.Production)
+theorem step_eq_reduceStep_default (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
+    (Hi : StackInvariant init stk) (prod : G.Production)
     (Hval : validForReduce (stateOfStack init stk) prod)
     (haction : A.action_table (stateOfStack init stk) = .Default_reduce_act prod) :
     step init hsafe stk buffer Hi = reduceStep init stk prod buffer Hval Hi := by
@@ -1005,12 +1005,12 @@ theorem step_eq_reduceStep_default (hsafe : safe) (stk : Stack) (buffer : Buffer
     rw [haction] at haction'; exact absurd haction' (by simp)
 
 /-- `step` reduces to `reduceStep` when the lookahead action is a reduce. -/
-theorem step_eq_reduceStep_lookahead (hsafe : safe) (stk : Stack) (buffer : Buffer)
-    (Hi : StackInvariant init stk) (prod : A.Production)
+theorem step_eq_reduceStep_lookahead (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
+    (Hi : StackInvariant init stk) (prod : G.Production)
     (Hval : validForReduce (stateOfStack init stk) prod)
-    (awt : (term : A.Terminal) → A.LookaheadAction term)
+    (awt : (term : G.Terminal) → A.LookaheadAction term)
     (haction : A.action_table (stateOfStack init stk) = .Lookahead_act awt)
-    (hawt : awt (A.token_term buffer.head) = .Reduce_act prod) :
+    (hawt : awt (G.token_term buffer.head) = .Reduce_act prod) :
     step init hsafe stk buffer Hi = reduceStep init stk prod buffer Hval Hi := by
   unfold step
   split
@@ -1028,16 +1028,16 @@ theorem step_eq_reduceStep_lookahead (hsafe : safe) (stk : Stack) (buffer : Buff
       rw [hawt] at hawt'; exact absurd hawt' (by simp)
 
 /-- `step` shifts and pushes the read token when the lookahead action is a shift. -/
-theorem step_shift_eq (hsafe : safe) (stk : Stack) (tok : A.Token) (rest : Buffer)
+theorem step_shift_eq (hsafe : safe A) (stk : Stack A) (tok : G.Token) (rest : Buffer G)
     (Hi : StackInvariant init stk)
-    (awt : (term : A.Terminal) → A.LookaheadAction term)
+    (awt : (term : G.Terminal) → A.LookaheadAction term)
     (haction : A.action_table (stateOfStack init stk) = .Lookahead_act awt)
     (stateNew : A.NonInitState)
-    (e : Symbol.T (A.token_term tok) = A.last_symb_of_non_init_state stateNew)
-    (hawt : awt (A.token_term tok) = .Shift_act stateNew e) :
+    (e : Symbol.T (G.token_term tok) = A.last_symb_of_non_init_state stateNew)
+    (hawt : awt (G.token_term tok) = .Shift_act stateNew e) :
     step init hsafe stk (Buf.cons tok rest) Hi =
-      .Progress (⟨stateNew, cast (congrArg A.symbol_semantic_type e)
-        (A.token_sem tok)⟩ :: stk) rest := by
+      .Progress (⟨stateNew, cast (congrArg G.symbol_semantic_type e)
+        (G.token_sem tok)⟩ :: stk) rest := by
   unfold step
   split
   · rename_i prod' haction'
@@ -1054,7 +1054,7 @@ theorem step_shift_eq (hsafe : safe) (stk : Stack) (tok : A.Token) (rest : Buffe
       rw [hawt] at hawt'; exact absurd hawt' (by simp)
 
 /-- Each parsing step follows `next_ptd` (Coq `step_next_ptd`). -/
-theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word) (stk : Stack)
+theorem step_next_ptd (hsafe : safe A) (hc : complete A) (ptd : PtDot init full_word) (stk : Stack A)
     (Hi : StackInvariant init stk)
     (Hstk : ptdStackCompat init full_word buffer_end ptd stk) :
     match nextPtd init full_word ptd with
@@ -1069,10 +1069,10 @@ theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word
   | @Reduce_ptd prod word ptl ptz =>
     simp only [ptdBuffer]
     have hsf : stateHasFuture (stateOfStack init stk) prod []
-        (A.token_term (ptzBuffer init full_word buffer_end ptz).head) := by
+        (G.token_term (ptzBuffer init full_word buffer_end ptz).head) := by
       obtain ⟨stk0, h, _, _⟩ := Hstk; exact h
     have Hred := endReduce_of_complete hc (stateOfStack init stk) prod []
-      (A.token_term (ptzBuffer init full_word buffer_end ptz).head) hsf
+      (G.token_term (ptzBuffer init full_word buffer_end ptz).head) hsf
     dsimp only at Hred
     cases haction : A.action_table (stateOfStack init stk) with
     | Default_reduce_act p =>
@@ -1085,14 +1085,14 @@ theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word
       exact reduceStep_next_ptd init full_word buffer_end hc ptl ptz stk hro Hi Hstk
     | Lookahead_act awt =>
       simp only [haction] at Hred
-      cases hawt : awt (A.token_term (ptzBuffer init full_word buffer_end ptz).head) with
+      cases hawt : awt (G.token_term (ptzBuffer init full_word buffer_end ptz).head) with
       | Shift_act s2 e => simp only [hawt] at Hred
       | Reduce_act p =>
         simp only [hawt] at Hred
         subst p
         have hro := reduceOk_of_safe hsafe (stateOfStack init stk)
         rw [haction] at hro
-        have hro' := hro (A.token_term (ptzBuffer init full_word buffer_end ptz).head)
+        have hro' := hro (G.token_term (ptzBuffer init full_word buffer_end ptz).head)
         rw [hawt] at hro'
         rw [step_eq_reduceStep_lookahead init hsafe stk (ptzBuffer init full_word buffer_end ptz) Hi
           prod hro' awt haction hawt]
@@ -1106,17 +1106,17 @@ theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word
     simp only [ptdStackCompat] at Hstk
     obtain ⟨stk0, Hfut, Hstk', Hstk0⟩ := Hstk
     have Hact := terminalShift_of_complete hc (stateOfStack init stk) (ptlzProd init full_word ptlz)
-      (Symbol.T (A.token_term tok) :: ptlzFuture init full_word ptlz)
+      (Symbol.T (G.token_term tok) :: ptlzFuture init full_word ptlz)
       (ptlzLookahead init full_word buffer_end ptlz) Hfut
     dsimp only at Hact
     cases haction : A.action_table (stateOfStack init stk) with
     | Default_reduce_act p => simp only [haction] at Hact
     | Lookahead_act awt =>
       simp only [haction] at Hact
-      cases hawt : awt (A.token_term tok) with
+      cases hawt : awt (G.token_term tok) with
       | Shift_act s2 e =>
         simp only [hawt] at Hact
-        refine ⟨⟨s2, cast (congrArg A.symbol_semantic_type e) (A.token_sem tok)⟩ :: stk, ?_, ?_⟩
+        refine ⟨⟨s2, cast (congrArg G.symbol_semantic_type e) (G.token_sem tok)⟩ :: stk, ?_, ?_⟩
         · rw [step_shift_eq init hsafe stk tok (ptlzBuffer init full_word buffer_end ptlz) Hi
             awt haction s2 e hawt]
           rw [← ptd_buffer_build_from_ptl init full_word buffer_end
@@ -1129,8 +1129,8 @@ theorem step_next_ptd (hsafe : safe) (hc : complete) (ptd : PtDot init full_word
       | Fail_act => simp only [hawt] at Hact
 
 /-- The parse loop follows `next_ptd_iter` (Coq `parse_fix_next_ptd_iter`). -/
-theorem parseFix_next_ptd_iter (hsafe : safe) (hc : complete) (ptd : PtDot init full_word)
-    (stk : Stack) (logNSteps : Nat) (Hi : StackInvariant init stk)
+theorem parseFix_next_ptd_iter (hsafe : safe A) (hc : complete A) (ptd : PtDot init full_word)
+    (stk : Stack A) (logNSteps : Nat) (Hi : StackInvariant init stk)
     (Hstk : ptdStackCompat init full_word buffer_end ptd stk) :
     match nextPtdIter init full_word ptd logNSteps with
     | none =>
@@ -1174,8 +1174,8 @@ theorem parseFix_next_ptd_iter (hsafe : safe) (hc : complete) (ptd : PtDot init 
 /-- **Completeness of the interpreter** (Coq `parse_complete`). Given any parse
 tree of the input, the parser succeeds with enough fuel, returns that tree's
 semantics, consumes exactly `full_word`, and a tighter fuel bound holds. -/
-theorem parse_complete (hsafe : safe) (hc : complete)
-    (full_pt : ParseTree (.NT (A.start_nt init)) full_word) (logNSteps : Nat) :
+theorem parse_complete (hsafe : safe A) (hc : complete A)
+    (full_pt : ParseTree G (.NT (A.start_nt init)) full_word) (logNSteps : Nat) :
     match parse init hsafe (full_word ++ₛ buffer_end) logNSteps with
     | .Parsed sem buff =>
       sem = ptSem full_pt ∧ buff = buffer_end ∧ ptSize full_pt ≤ 2 ^ logNSteps

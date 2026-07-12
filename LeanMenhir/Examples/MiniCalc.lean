@@ -91,12 +91,23 @@ def actions : Nat → List Expr → Expr
   | 9, l => l.getD 1 (.num 0)                                -- p_atom → ( p_expr )
   | _, _ => .num 0
 
-/-- The verified automaton built from the generated tables. -/
-instance automaton : Automaton := automatonOfTables miniTables Expr actions
+/-- Production lookups straight from `grammar` (naive array reads; 10
+productions — kernel `decide` walks them exactly as it walked the table arrays). -/
+@[reducible] def miniLk : ProdLookup grammar := ProdLookup.default grammar
+
+/-- The verified grammar — a **definitional function of `grammar`** (D9): the
+theorems below quantify over exactly the `Grammar0` above, not over anything the
+untrusted generator produced. -/
+@[reducible] def miniGrammar : Grammar := grammar.toGrammar miniLk Expr actions
+
+/-- The verified automaton for `miniGrammar`; `miniTables` contributes only the
+(untrusted) automaton half. -/
+def automaton : Automaton miniGrammar :=
+  automatonOfG0Tables grammar miniLk Expr actions miniTables
 
 /-- The generated tables are safe — certified by **kernel `decide`** (the only
 trusted component is the Lean kernel; no `native_decide`/compiler-trust axiom). -/
-theorem minicalcSafe : Main.safeValidator (A := automaton) () = true := by decide
+theorem minicalcSafe : Main.safeValidator automaton = true := by decide
 
 /-- The tables' **grammar half** is exactly `grammar` — production by production,
 in the very fields the bridge consumes, with every index in range (so the `Fin`
@@ -136,7 +147,7 @@ partial def lexAux : List Char → Option (List (Fin 10 × Expr))
       | _ => none
 
 /-- Lex a string into a token buffer ending in an infinite `EOF` filler. -/
-def lexString (s : String) : Option (Buffer (A := automaton)) :=
+def lexString (s : String) : Option (Buffer miniGrammar) :=
   (lexAux s.toList).map (fun toks => Buf.ofListEof toks ((6 : Fin 10), Expr.num 0))
 
 /-- Parse a string into an `Expr` (`MiniCalc.v`, `string2expr`). -/
@@ -196,13 +207,13 @@ is unambiguous (any two trees of a word have the same AST). -/
 
 /-- The **completeness** validator accepts the generated tables — certified by
 **kernel `decide`** (no `native_decide`/compiler-trust axiom). -/
-theorem minicalcComplete : Main.completeValidator (A := automaton) () = true := by decide
+theorem minicalcComplete : Main.completeValidator automaton = true := by decide
 
 /-- Every parse `tree`, given enough fuel, is parsed to its own AST, consuming
 exactly `word`. -/
-theorem mini_parses (logNSteps : Nat) (word : List automaton.Token)
-    (bufEnd : Buffer (A := automaton))
-    (tree : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word)
+theorem mini_parses (logNSteps : Nat) (word : List miniGrammar.Token)
+    (bufEnd : Buffer miniGrammar)
+    (tree : ParseTree miniGrammar (.NT (automaton.start_nt (0 : Fin 1))) word)
     (hfuel : ptSize tree ≤ 2 ^ logNSteps) :
     Main.parse (A := automaton) (0 : Fin 1) minicalcSafe logNSteps (word ++ₛ bufEnd)
       = .Parsed (ptSem tree) bufEnd := by
@@ -214,32 +225,32 @@ theorem mini_parses (logNSteps : Nat) (word : List automaton.Token)
   | Fail s t => rw [hp] at H; exact H.elim
 
 /-- **Unambiguity**: any two parse trees of the same word have equal AST. -/
-theorem mini_unambiguous (word : List automaton.Token)
-    (tree1 tree2 : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word) :
+theorem mini_unambiguous (word : List miniGrammar.Token)
+    (tree1 tree2 : ParseTree miniGrammar (.NT (automaton.start_nt (0 : Fin 1))) word) :
     ptSem tree1 = ptSem tree2 :=
   Main.unambiguity (A := automaton) minicalcSafe minicalcComplete ((6 : Fin 10), .num 0)
     (0 : Fin 1) word tree1 tree2
 
 /-- The EOF token that `lexString` pads with. -/
-def eofTok : automaton.Token := ((6 : Fin 10), Expr.num 0)
+def eofTok : miniGrammar.Token := ((6 : Fin 10), Expr.num 0)
 
 /-- The MiniCalc grammar is **EOF-anchored**: the start nonterminal `parse_expr`
 occurs in no RHS, its sole production ends in `EOF`, and `EOF` occurs nowhere
 else. Kernel `decide`. -/
 theorem minicalcAnchored :
-    isEofAnchored (G := automaton.toGrammar) (6 : Fin 10)
+    isEofAnchored (G := miniGrammar) (6 : Fin 10)
       (automaton.start_nt (0 : Fin 1)) = true := by decide
 
 /-- **Exact consumption**: a successful parse of the padded buffer recognised
 *exactly* `toks ++ [EOF]` — the whole input, no trailing garbage — provided the
 lexer never emits the EOF terminal (`lexAux` never does). Combines soundness
 with the `minicalcAnchored` certificate via `Main.parse_correct_anchored`. -/
-theorem mini_consumes_all (toks : List automaton.Token) (logNSteps : Nat)
-    (hlex : ∀ tok ∈ toks, automaton.token_term tok ≠ automaton.token_term eofTok)
-    {sem} {rest : Buffer (A := automaton)}
+theorem mini_consumes_all (toks : List miniGrammar.Token) (logNSteps : Nat)
+    (hlex : ∀ tok ∈ toks, miniGrammar.token_term tok ≠ miniGrammar.token_term eofTok)
+    {sem} {rest : Buffer miniGrammar}
     (hp : Main.parse (A := automaton) (0 : Fin 1) minicalcSafe logNSteps
       (Buf.ofListEof toks eofTok) = .Parsed sem rest) :
-    ∃ pt : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) (toks ++ [eofTok]),
+    ∃ pt : ParseTree miniGrammar (.NT (automaton.start_nt (0 : Fin 1))) (toks ++ [eofTok]),
       ptSem pt = sem :=
   Main.parse_correct_anchored (A := automaton) (0 : Fin 1) minicalcSafe logNSteps toks
     eofTok (isEofAnchored_spec minicalcAnchored) hlex hp
@@ -256,8 +267,8 @@ both denote the token stream `toks ++ EOF^ω`.
 elaborating these fuel-indexed theorems at a *fuel literal* forces the
 elaborator's `whnf` through `parseFix`'s `2 ^ fuel` step cascade — exponential
 in the literal — so, as with `mini_parses`, the fuel stays symbolic.) -/
-theorem mini_parses_runtime (toks : List automaton.Token) (logNSteps : Nat)
-    (tree : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) (toks ++ [eofTok]))
+theorem mini_parses_runtime (toks : List miniGrammar.Token) (logNSteps : Nat)
+    (tree : ParseTree miniGrammar (.NT (automaton.start_nt (0 : Fin 1))) (toks ++ [eofTok]))
     (hfuel : ptSize tree ≤ 2 ^ logNSteps) :
     ∃ rest, Main.parse (A := automaton) (0 : Fin 1) minicalcSafe logNSteps
         (Buf.ofListEof toks eofTok) = .Parsed (ptSem tree) rest := by

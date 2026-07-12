@@ -47,16 +47,24 @@ def actions : Nat → List Nat → Nat
   | 2, l => l.getD 0 0                 -- E → num     ↦ num
   | _, _ => 0
 
-/-- The verified automaton built from the generated tables. -/
-instance automaton : Automaton := automatonOfTables tables Nat actions
+/-- Production lookups straight from `grammar` (naive array reads). -/
+@[reducible] def arithLk : ProdLookup grammar := ProdLookup.default grammar
+
+/-- The verified grammar — a **definitional function of `grammar`** (D9). -/
+@[reducible] def arithGrammar : Grammar := grammar.toGrammar arithLk Nat actions
+
+/-- The verified automaton for `arithGrammar`; the generated `tables` contribute
+only the (untrusted) automaton half. -/
+def automaton : Automaton arithGrammar :=
+  automatonOfG0Tables grammar arithLk Nat actions tables
 
 /-- The safety validator accepts the generated tables — checked by computation. -/
-theorem isSafe_ok : Main.safeValidator (A := automaton) () = true := by native_decide
+theorem isSafe_ok : Main.safeValidator automaton = true := by native_decide
 
 /-- The **completeness** validator also accepts the generated tables. Combined
 with `Main.parse_complete`/`Main.unambiguity`, this certifies that the generated
 parser recognises *every* parse tree of the grammar and is unambiguous. -/
-theorem isComplete_ok : Main.completeValidator (A := automaton) () = true := by native_decide
+theorem isComplete_ok : Main.completeValidator automaton = true := by native_decide
 
 /-- The tables' **grammar half** is exactly `grammar` (production data, start
 symbol, and index ranges) — the part the validators cannot check. `native_decide`
@@ -66,7 +74,7 @@ theorem grammarMatch_ok : tablesMatchGrammar tables grammar = true := by native_
 
 /-- Parse a token stream (terminal index, value), ending in an infinite `eof`. -/
 def parseTokens (toks : List (Fin 4 × Nat)) : Option Nat :=
-  let buf : Buffer (A := automaton) := Buf.ofListEof toks ((2 : Fin 4), 0)
+  let buf : Buffer arithGrammar := Buf.ofListEof toks ((2 : Fin 4), 0)
   match Main.parse (A := automaton) (0 : Fin 1) isSafe_ok 30 buf with
   | .Parsed v _ => some v
   | _ => none
@@ -83,11 +91,11 @@ example : parseTokens [(1, 0), (0, 1)] = none := by native_decide
 /-- **Soundness** for the generated Arith parser (a clean corollary of
 `Main.parse_correct`): whenever it returns `Parsed sem _`, `sem` is the semantics
 of a real parse tree of the consumed input. -/
-theorem arith_correct (logNSteps : Nat) (buffer : Buffer (A := automaton))
-    (sem : automaton.symbol_semantic_type (.NT (automaton.start_nt (0 : Fin 1))))
-    (bufNew : Buffer (A := automaton))
+theorem arith_correct (logNSteps : Nat) (buffer : Buffer arithGrammar)
+    (sem : arithGrammar.symbol_semantic_type (.NT (automaton.start_nt (0 : Fin 1))))
+    (bufNew : Buffer arithGrammar)
     (h : Main.parse (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer = .Parsed sem bufNew) :
-    ∃ (word : List automaton.Token) (pt : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word),
+    ∃ (word : List arithGrammar.Token) (pt : ParseTree arithGrammar (.NT (automaton.start_nt (0 : Fin 1))) word),
       buffer.get = (word ++ₛ bufNew).get ∧ ptSem pt = sem := by
   have H := Main.parse_correct (A := automaton) (0 : Fin 1) isSafe_ok logNSteps buffer
   rw [h] at H; exact H
@@ -96,9 +104,9 @@ theorem arith_correct (logNSteps : Nat) (buffer : Buffer (A := automaton))
 `Main.parse_complete` specialised with the safety + completeness certificates):
 *every* parse `tree` of `word`, given enough fuel (`ptSize tree ≤ 2 ^ logNSteps`),
 is parsed to its own semantic value, consuming exactly `word`. -/
-theorem arith_parses (logNSteps : Nat) (word : List automaton.Token)
-    (bufEnd : Buffer (A := automaton))
-    (tree : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word)
+theorem arith_parses (logNSteps : Nat) (word : List arithGrammar.Token)
+    (bufEnd : Buffer arithGrammar)
+    (tree : ParseTree arithGrammar (.NT (automaton.start_nt (0 : Fin 1))) word)
     (hfuel : ptSize tree ≤ 2 ^ logNSteps) :
     Main.parse (A := automaton) (0 : Fin 1) isSafe_ok logNSteps (word ++ₛ bufEnd)
       = .Parsed (ptSem tree) bufEnd := by
@@ -111,8 +119,8 @@ theorem arith_parses (logNSteps : Nat) (word : List automaton.Token)
 
 /-- **Unambiguity** for the generated Arith parser: any two parse trees of the
 same word have equal semantic value. -/
-theorem arith_unambiguous (word : List automaton.Token)
-    (tree1 tree2 : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) word) :
+theorem arith_unambiguous (word : List arithGrammar.Token)
+    (tree1 tree2 : ParseTree arithGrammar (.NT (automaton.start_nt (0 : Fin 1))) word) :
     ptSem tree1 = ptSem tree2 :=
   Main.unambiguity (A := automaton) isSafe_ok isComplete_ok ((2 : Fin 4), 0) (0 : Fin 1)
     word tree1 tree2

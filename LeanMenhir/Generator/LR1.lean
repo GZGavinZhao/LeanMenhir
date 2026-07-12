@@ -6,21 +6,10 @@ need not be proved correct.
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Generator.Tables
+import LeanMenhir.Generator.Grammar0
 
 namespace LeanMenhir
 namespace Gen
-
-/-- A grammar description for the generator. Terminals `0..numTerm-1`,
-nonterminals `0..numNonterm-1`. `start` must have exactly the productions whose
-RHS ends in `eof`. -/
-structure Grammar0 where
-  numTerm : Nat
-  numNonterm : Nat
-  /-- Each production: `(lhs, rhs)` with `rhs` in forward order. -/
-  prods : Array (Nat × Array GSym)
-  start : Nat
-  eof : Nat
-deriving Inhabited
 
 namespace Grammar0
 variable (g : Grammar0)

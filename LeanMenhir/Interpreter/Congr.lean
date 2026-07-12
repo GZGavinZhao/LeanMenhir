@@ -22,7 +22,7 @@ import LeanMenhir.Interpreter.Complete
 
 namespace LeanMenhir
 
-variable [A : Automaton] (init : A.InitState)
+variable {G : Grammar} {A : Automaton G} (init : A.InitState)
 
 /-! ### Result equivalence up to buffer denotation -/
 
@@ -50,7 +50,7 @@ theorem StepResult.BufEquiv.trans {init : A.InitState} {r₁ r₂ r₃ : StepRes
     | exact ⟨h₁.1.trans h₂.1, h₁.2.trans h₂.2⟩
 
 /-- Two parse results that are equal *up to the denotation of their buffers*. -/
-def ParseResult.BufEquiv {R : Type} : ParseResult R → ParseResult R → Prop
+def ParseResult.BufEquiv {R : Type} : ParseResult A R → ParseResult A R → Prop
   | .Fail st tok, .Fail st' tok' => st = st' ∧ tok = tok'
   | .Timeout, .Timeout => True
   | .Parsed v b, .Parsed v' b' => v = v' ∧ b.get = b'.get
@@ -60,14 +60,14 @@ def ParseResult.BufEquiv {R : Type} : ParseResult R → ParseResult R → Prop
 
 /-- `reduceStep` threads the buffer through untouched, so denotationally equal
 buffers yield the same result. -/
-theorem reduceStep_congr (stk : Stack) (prod : A.Production) {b₁ b₂ : Buffer}
+theorem reduceStep_congr (stk : Stack A) (prod : G.Production) {b₁ b₂ : Buffer G}
     (h : b₁.get = b₂.get) (Hval : validForReduce (stateOfStack init stk) prod)
     (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (reduceStep init stk prod b₁ Hval Hi)
       (reduceStep init stk prod b₂ Hval Hi) := by
-  rcases hpop : pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
-      (A.prod_action prod) with ⟨stk0, sem⟩
-  cases hgoto : A.goto_table (stateOfStack init stk0) (A.prod_lhs prod) with
+  rcases hpop : pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (G.prod_action prod) with ⟨stk0, sem⟩
+  cases hgoto : A.goto_table (stateOfStack init stk0) (G.prod_lhs prod) with
   | some v =>
     obtain ⟨stateNew, e⟩ := v
     rw [reduceStep_progress_eq init stk prod b₁ Hval Hi stk0 sem stateNew e hpop hgoto,
@@ -75,10 +75,10 @@ theorem reduceStep_congr (stk : Stack) (prod : A.Production) {b₁ b₂ : Buffer
     exact ⟨rfl, h⟩
   | none =>
     have hgoto' : A.goto_table (stateOfStack init
-        (pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
-          (A.prod_action prod)).1) (A.prod_lhs prod) = none := by
+        (pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+          (G.prod_action prod)).1) (G.prod_lhs prod) = none := by
       rw [hpop]; exact hgoto
-    have e2 : A.prod_lhs prod = A.start_nt init :=
+    have e2 : G.prod_lhs prod = A.start_nt init :=
       (reduce_none_aux init stk prod Hval Hi
         (Prefix.trans Hval.1 (Hi.symb_prefix init)) hgoto').2
     rw [reduceStep_accept_eq init stk prod b₁ Hval Hi stk0 sem e2 hpop hgoto,
@@ -94,16 +94,16 @@ and the fail equation, completing the case analysis of `step`. -/
 
 /-- `step` shifts on a shift action, pushing the read head and dropping to the
 tail (general-buffer variant of `step_shift_eq`). -/
-theorem step_shift_eq' (hsafe : safe) (stk : Stack) (buffer : Buffer)
+theorem step_shift_eq' (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
     (Hi : StackInvariant init stk)
-    (awt : (term : A.Terminal) → A.LookaheadAction term)
+    (awt : (term : G.Terminal) → A.LookaheadAction term)
     (haction : A.action_table (stateOfStack init stk) = .Lookahead_act awt)
     (stateNew : A.NonInitState)
-    (e : Symbol.T (A.token_term buffer.head) = A.last_symb_of_non_init_state stateNew)
-    (hawt : awt (A.token_term buffer.head) = .Shift_act stateNew e) :
+    (e : Symbol.T (G.token_term buffer.head) = A.last_symb_of_non_init_state stateNew)
+    (hawt : awt (G.token_term buffer.head) = .Shift_act stateNew e) :
     step init hsafe stk buffer Hi =
-      .Progress (⟨stateNew, cast (congrArg A.symbol_semantic_type e)
-        (A.token_sem buffer.head)⟩ :: stk) buffer.tail := by
+      .Progress (⟨stateNew, cast (congrArg G.symbol_semantic_type e)
+        (G.token_sem buffer.head)⟩ :: stk) buffer.tail := by
   unfold step
   split
   · rename_i prod' haction'
@@ -120,11 +120,11 @@ theorem step_shift_eq' (hsafe : safe) (stk : Stack) (buffer : Buffer)
       rw [hawt] at hawt'; exact absurd hawt' (by simp)
 
 /-- `step` fails on a fail action, reporting the current state and head token. -/
-theorem step_fail_eq (hsafe : safe) (stk : Stack) (buffer : Buffer)
+theorem step_fail_eq (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
     (Hi : StackInvariant init stk)
-    (awt : (term : A.Terminal) → A.LookaheadAction term)
+    (awt : (term : G.Terminal) → A.LookaheadAction term)
     (haction : A.action_table (stateOfStack init stk) = .Lookahead_act awt)
-    (hawt : awt (A.token_term buffer.head) = .Fail_act) :
+    (hawt : awt (G.token_term buffer.head) = .Fail_act) :
     step init hsafe stk buffer Hi = .Fail (stateOfStack init stk) buffer.head := by
   unfold step
   split
@@ -144,7 +144,7 @@ theorem step_fail_eq (hsafe : safe) (stk : Stack) (buffer : Buffer)
 
 /-- `step` on `cons b.head b.tail` behaves like `step` on `b` (η for the one
 head/tail observation `step` makes). -/
-theorem step_eta (hsafe : safe) (stk : Stack) (b : Buffer) (Hi : StackInvariant init stk) :
+theorem step_eta (hsafe : safe A) (stk : Stack A) (b : Buffer G) (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (step init hsafe stk (Buf.cons b.head b.tail) Hi)
       (step init hsafe stk b Hi) := by
   cases haction : A.action_table (stateOfStack init stk) with
@@ -155,7 +155,7 @@ theorem step_eta (hsafe : safe) (stk : Stack) (b : Buffer) (Hi : StackInvariant 
         step_eq_reduceStep_default init hsafe stk b Hi prod Hval haction]
     exact reduceStep_congr init stk prod (Buf.get_eta b) Hval Hi
   | Lookahead_act awt =>
-    cases hawt : awt (A.token_term b.head) with
+    cases hawt : awt (G.token_term b.head) with
     | Shift_act stateNew e =>
       rw [step_shift_eq init hsafe stk b.head b.tail Hi awt haction stateNew e hawt,
           step_shift_eq' init hsafe stk b Hi awt haction stateNew e hawt]
@@ -163,7 +163,7 @@ theorem step_eta (hsafe : safe) (stk : Stack) (b : Buffer) (Hi : StackInvariant 
     | Reduce_act prod =>
       have Hval : validForReduce (stateOfStack init stk) prod := by
         have h := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at h
-        have h2 := h (A.token_term b.head); rw [hawt] at h2; exact h2
+        have h2 := h (G.token_term b.head); rw [hawt] at h2; exact h2
       rw [step_eq_reduceStep_lookahead init hsafe stk (Buf.cons b.head b.tail) Hi prod Hval
             awt haction hawt,
           step_eq_reduceStep_lookahead init hsafe stk b Hi prod Hval awt haction hawt]
@@ -174,7 +174,7 @@ theorem step_eta (hsafe : safe) (stk : Stack) (b : Buffer) (Hi : StackInvariant 
       exact ⟨rfl, rfl⟩
 
 /-- `step` congruence for buffers sharing the same (literal) head token. -/
-theorem step_cons_congr (hsafe : safe) (stk : Stack) (tok : A.Token) {r₁ r₂ : Buffer}
+theorem step_cons_congr (hsafe : safe A) (stk : Stack A) (tok : G.Token) {r₁ r₂ : Buffer G}
     (h : r₁.get = r₂.get) (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (step init hsafe stk (Buf.cons tok r₁) Hi)
       (step init hsafe stk (Buf.cons tok r₂) Hi) := by
@@ -187,7 +187,7 @@ theorem step_cons_congr (hsafe : safe) (stk : Stack) (tok : A.Token) {r₁ r₂ 
         step_eq_reduceStep_default init hsafe stk (Buf.cons tok r₂) Hi prod Hval haction]
     exact reduceStep_congr init stk prod hc Hval Hi
   | Lookahead_act awt =>
-    cases hawt : awt (A.token_term tok) with
+    cases hawt : awt (G.token_term tok) with
     | Shift_act stateNew e =>
       rw [step_shift_eq init hsafe stk tok r₁ Hi awt haction stateNew e hawt,
           step_shift_eq init hsafe stk tok r₂ Hi awt haction stateNew e hawt]
@@ -195,7 +195,7 @@ theorem step_cons_congr (hsafe : safe) (stk : Stack) (tok : A.Token) {r₁ r₂ 
     | Reduce_act prod =>
       have Hval : validForReduce (stateOfStack init stk) prod := by
         have hv := reduceOk_of_safe hsafe (stateOfStack init stk); rw [haction] at hv
-        have hv2 := hv (A.token_term tok); rw [hawt] at hv2; exact hv2
+        have hv2 := hv (G.token_term tok); rw [hawt] at hv2; exact hv2
       rw [step_eq_reduceStep_lookahead init hsafe stk (Buf.cons tok r₁) Hi prod Hval
             awt haction hawt,
           step_eq_reduceStep_lookahead init hsafe stk (Buf.cons tok r₂) Hi prod Hval
@@ -208,7 +208,7 @@ theorem step_cons_congr (hsafe : safe) (stk : Stack) (tok : A.Token) {r₁ r₂ 
 
 /-- **`step` congruence**: denotationally equal buffers produce equivalent step
 results. -/
-theorem step_congr (hsafe : safe) (stk : Stack) {b₁ b₂ : Buffer} (h : b₁.get = b₂.get)
+theorem step_congr (hsafe : safe A) (stk : Stack A) {b₁ b₂ : Buffer G} (h : b₁.get = b₂.get)
     (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (step init hsafe stk b₁ Hi) (step init hsafe stk b₂ Hi) := by
   have hhead : b₁.head = b₂.head := congrFun h 0
@@ -225,7 +225,7 @@ theorem step_congr (hsafe : safe) (stk : Stack) {b₁ b₂ : Buffer} (h : b₁.g
 
 /-- **`parseFix` congruence**: denotationally equal buffers produce equivalent
 results after any number of steps. -/
-theorem parseFix_congr (hsafe : safe) (stk : Stack) {b₁ b₂ : Buffer} (h : b₁.get = b₂.get)
+theorem parseFix_congr (hsafe : safe A) (stk : Stack A) {b₁ b₂ : Buffer G} (h : b₁.get = b₂.get)
     (logNSteps : Nat) (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (parseFix init hsafe stk b₁ logNSteps Hi).1
       (parseFix init hsafe stk b₂ logNSteps Hi).1 := by
@@ -260,7 +260,7 @@ theorem parseFix_congr (hsafe : safe) (stk : Stack) {b₁ b₂ : Buffer} (h : b�
 /-- **`parse` congruence**: the parser cannot distinguish denotationally equal
 input buffers — same outcome, same semantic value, `get`-equal residual buffer.
 This is the extensionality bridge used by `Main.parse_complete_ext`. -/
-theorem parse_congr (hsafe : safe) {b₁ b₂ : Buffer} (h : b₁.get = b₂.get) (logNSteps : Nat) :
+theorem parse_congr (hsafe : safe A) {b₁ b₂ : Buffer G} (h : b₁.get = b₂.get) (logNSteps : Nat) :
     ParseResult.BufEquiv (parse init hsafe b₁ logNSteps) (parse init hsafe b₂ logNSteps) := by
   have H := parseFix_congr init hsafe [] h logNSteps (initStackInvariant init)
   unfold parse

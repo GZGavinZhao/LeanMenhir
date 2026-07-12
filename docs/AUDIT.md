@@ -46,8 +46,10 @@ proof-relevant form; the recognition faces are corollaries.
 2. **The definitions in files 1–3 above** (~700 lines). If `ParseTree`/`ptSem`
    say what you mean by "derivation" and `parse`/`parseList` are what you run,
    the theorems mean what they say.
-3. **Your `Grammar0`** — reviewed by eye; tied to the generated tables by the
-   kernel-checked `tablesMatchGrammar` certificate (leak-2).
+3. **Your `Grammar0`** — reviewed by eye. The verified grammar is a
+   *definitional function of it* (`grammar.toGrammar …`, D9): the generated
+   tables contribute only the untrusted automaton half, and the production
+   lookups carry intrinsic, kernel-checked agreement proofs (`ProdLookup`).
 4. **Your lexer's EOF discipline** — the hypothesis `hlex : ∀ tok ∈ toks,
    token_term tok ≠ token_term eof` of the exact-consumption theorems.
 
@@ -83,11 +85,11 @@ not part of the proof.
 - **Unambiguity is value-level** (same as the Coq original).
 - **`Timeout`** with the runtime fuel can effectively only be produced by a
   non-terminating table set, not by a valid-but-deep parse.
-- The `Automaton`-bundles-`Grammar` presentation and the `… = true` certificate
-  hypotheses are Coq heritage; the in-progress idiomatic refactor (see the
-  "LeanMenhir Idiomatic Refactor" plan) replaces them with an explicit
-  `(G : Grammar)` / `(A : Automaton G)` split and `Prop`-valued `Safe A` /
-  `Complete A`.
+- The `… = true` certificate hypotheses are Coq heritage; the in-progress
+  idiomatic refactor (see the "LeanMenhir Idiomatic Refactor" plan) replaces
+  them with `Prop`-valued `Safe A` / `Complete A` (phase P2). The
+  `(G : Grammar)` / `(A : Automaton G)` split (phase P1a) is done: every
+  theorem now binds the grammar explicitly.
 
 ## Checking axiom hygiene yourself
 

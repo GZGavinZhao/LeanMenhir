@@ -31,7 +31,7 @@ import LeanMenhir.Validator.Classes
 
 namespace LeanMenhir
 
-variable [G : Grammar]
+variable {G : Grammar}
 
 /-! ### The decidable anchoring check -/
 
@@ -89,7 +89,7 @@ other than the EOF terminal and the start nonterminal is EOF-free. -/
 theorem eof_free_pt {eoft : G.Terminal} {startnt : G.Nonterminal}
     (h : EofAnchored eoft startnt) :
     {s : Symbol G.Terminal G.Nonterminal} → {w : List G.Token} →
-    ParseTree s w → s ≠ Symbol.T eoft → s ≠ Symbol.NT startnt →
+    ParseTree G s w → s ≠ Symbol.T eoft → s ≠ Symbol.NT startnt →
     ∀ tok ∈ w, G.token_term tok ≠ eoft
   | _, _, .Terminal_pt tok, hs, _ => by
     intro tok' hmem heq
@@ -106,7 +106,7 @@ theorem eof_free_pt {eoft : G.Terminal} {startnt : G.Nonterminal}
 theorem eof_free_ptl {eoft : G.Terminal} {startnt : G.Nonterminal}
     (h : EofAnchored eoft startnt) :
     {ss : List (Symbol G.Terminal G.Nonterminal)} → {w : List G.Token} →
-    ParseTreeList ss w →
+    ParseTreeList G ss w →
     (∀ s ∈ ss, s ≠ Symbol.T eoft ∧ s ≠ Symbol.NT startnt) →
     ∀ tok ∈ w, G.token_term tok ≠ eoft
   | _, _, .Nil_ptl, _ => by intro tok hmem; exact absurd hmem List.not_mem_nil
@@ -121,7 +121,7 @@ end
 with `tk` the sole EOF token. -/
 theorem anchored_word_shape {eoft : G.Terminal} {startnt : G.Nonterminal}
     (h : EofAnchored eoft startnt) {w : List G.Token}
-    (pt : ParseTree (Symbol.NT startnt) w) :
+    (pt : ParseTree G (Symbol.NT startnt) w) :
     ∃ w' tk, w = w' ++ [tk] ∧ G.token_term tk = eoft ∧
       ∀ tok ∈ w', G.token_term tok ≠ eoft := by
   cases pt with
@@ -140,7 +140,7 @@ theorem anchored_word_shape {eoft : G.Terminal} {startnt : G.Nonterminal}
 
 /-- Transporting a parse tree along a word equality preserves its semantics. -/
 theorem ptSem_cast_word {s : Symbol G.Terminal G.Nonterminal} {w1 w2 : List G.Token}
-    (h : w1 = w2) (pt : ParseTree s w1) : ptSem (h ▸ pt) = ptSem pt := by
+    (h : w1 = w2) (pt : ParseTree G s w1) : ptSem (h ▸ pt) = ptSem pt := by
   subst h; rfl
 
 /-! ### Pinning the word to the input -/

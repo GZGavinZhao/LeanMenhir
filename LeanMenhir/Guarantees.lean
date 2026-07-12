@@ -12,7 +12,7 @@ requires no knowledge of the proof architecture.
 
 Read, in order:
 
-1. `LeanMenhir/Grammar.lean` — what a grammar, a derivation (`ParseTree`), and
+1. `LeanMenhir/Grammar.lean` — what a grammar, a derivation (`ParseTree G`), and
    its semantic value (`ptSem`) are; `LeanMenhir/Language.lean` — the
    propositional form: `Derives` / `word ∈ language nt` ("a derivation exists").
    **These define "the language".**
@@ -34,7 +34,7 @@ Current caveats a reviewer must know (tracked in the idiomatic-refactor plan):
 * The theorems are stated over an `Automaton`, whose grammar is the embedded
   `A.toGrammar` (Coq heritage). The grammar/automaton split (refactor phase P1)
   will make the grammar a separate, explicit binder.
-* Hypotheses of the form `Main.safeValidator () = true` are boolean-reflection
+* Hypotheses of the form `Main.safeValidator A = true` are boolean-reflection
   certificates (Coq heritage); phase P2 replaces them with `Prop`s (`Safe A`,
   `Complete A`) carrying named, documented content.
 
@@ -49,7 +49,7 @@ namespace Guarantees
 
 open LeanMenhir.Buf
 
-variable [A : Automaton]
+variable {G : Grammar} {A : Automaton G}
 
 /-! ## 1. Soundness -/
 
@@ -57,7 +57,7 @@ variable [A : Automaton]
 and the returned value is its meaning.*
 
 If `parse` returns `.Parsed sem rest`, then there is a word `word` and a real
-derivation (`ParseTree`) of `word` from the start symbol such that (a) the input
+derivation (`ParseTree G`) of `word` from the start symbol such that (a) the input
 buffer denotes exactly `word` followed by the residual buffer `rest`, and (b)
 the returned semantic value `sem` is that derivation's semantics.
 
@@ -66,11 +66,11 @@ consumed" needs EOF anchoring, see `parser_consumes_exactly`. Nothing is claimed
 about `.Fail`/`.Timeout` outcomes here; see `parser_never_rejects_valid`.
 
 Wraps `Main.parse_correct` (Coq `Main.parse_correct`). -/
-theorem parser_sound (init : A.InitState) (hsafe : Main.safeValidator () = true)
-    (fuel : Nat) (buffer : Buffer) {sem : A.symbol_semantic_type (.NT (A.start_nt init))}
-    {rest : Buffer}
+theorem parser_sound (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (fuel : Nat) (buffer : Buffer G) {sem : G.symbol_semantic_type (.NT (A.start_nt init))}
+    {rest : Buffer G}
     (h : Main.parse init hsafe fuel buffer = .Parsed sem rest) :
-    ∃ (word : List A.Token) (pt : ParseTree (.NT (A.start_nt init)) word),
+    ∃ (word : List G.Token) (pt : ParseTree G (.NT (A.start_nt init)) word),
       buffer.get = (word ++ₛ rest).get ∧ ptSem pt = sem := by
   have H := Main.parse_correct init hsafe fuel buffer
   rw [h] at H
@@ -79,11 +79,11 @@ theorem parser_sound (init : A.InitState) (hsafe : Main.safeValidator () = true)
 /-- **Soundness, recognition face** — *if the parser accepts, the consumed
 prefix is a word of the language.* The membership-only corollary of
 `parser_sound` (the derivation is forgotten into `∈ language`). -/
-theorem parser_sound_mem (init : A.InitState) (hsafe : Main.safeValidator () = true)
-    (fuel : Nat) (buffer : Buffer) {sem : A.symbol_semantic_type (.NT (A.start_nt init))}
-    {rest : Buffer}
+theorem parser_sound_mem (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (fuel : Nat) (buffer : Buffer G) {sem : G.symbol_semantic_type (.NT (A.start_nt init))}
+    {rest : Buffer G}
     (h : Main.parse init hsafe fuel buffer = .Parsed sem rest) :
-    ∃ word ∈ language (A.start_nt init), buffer.get = (word ++ₛ rest).get := by
+    ∃ word ∈ G.language (A.start_nt init), buffer.get = (word ++ₛ rest).get := by
   obtain ⟨word, pt, hbuf, -⟩ := parser_sound init hsafe fuel buffer h
   exact ⟨word, ⟨pt⟩, hbuf⟩
 
@@ -102,10 +102,10 @@ realisability (`runtime_complete`); for hand-picked fuel it is a real
 obligation.
 
 Wraps `Main.parse_complete` (Coq `Main.parse_complete`). -/
-theorem parser_complete (init : A.InitState) (hsafe : Main.safeValidator () = true)
-    (hcomplete : Main.completeValidator () = true)
-    (word : List A.Token) (bufferEnd : Buffer)
-    (tree : ParseTree (.NT (A.start_nt init)) word)
+theorem parser_complete (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (hcomplete : Main.completeValidator A = true)
+    (word : List G.Token) (bufferEnd : Buffer G)
+    (tree : ParseTree G (.NT (A.start_nt init)) word)
     (fuel : Nat) (hfuel : ptSize tree ≤ 2 ^ fuel) :
     Main.parse init hsafe fuel (word ++ₛ bufferEnd) = .Parsed (ptSem tree) bufferEnd := by
   have H := Main.parse_complete init hsafe hcomplete fuel word bufferEnd tree
@@ -120,16 +120,16 @@ theorem parser_complete (init : A.InitState) (hsafe : Main.safeValidator () = tr
 /-- **Completeness, recognition face** — *every word of the language is
 accepted.*
 
-If `word ∈ language (A.start_nt init)` — the hypothesis a reader expects — then
+If `word ∈ G.language (A.start_nt init)` — the hypothesis a reader expects — then
 the parser, given enough fuel, accepts `word` (followed by anything) and hands
 back the untouched continuation. Membership alone cannot reveal the size of a
 derivation, hence the existential fuel threshold; `parser_complete` (the
 semantic face, of which this is a corollary) pins value and fuel exactly, and
 `runtime_complete` discharges the fuel up to physical realisability. -/
-theorem parser_accepts (init : A.InitState) (hsafe : Main.safeValidator () = true)
-    (hcomplete : Main.completeValidator () = true)
-    {word : List A.Token} (hmem : word ∈ language (A.start_nt init))
-    (bufferEnd : Buffer) :
+theorem parser_accepts (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (hcomplete : Main.completeValidator A = true)
+    {word : List G.Token} (hmem : word ∈ G.language (A.start_nt init))
+    (bufferEnd : Buffer G) :
     ∃ fuel₀, ∀ fuel, fuel₀ ≤ fuel →
       ∃ sem, Main.parse init hsafe fuel (word ++ₛ bufferEnd) = .Parsed sem bufferEnd := by
   obtain ⟨tree⟩ := hmem
@@ -140,16 +140,16 @@ theorem parser_accepts (init : A.InitState) (hsafe : Main.safeValidator () = tru
 /-- **No spurious rejection** — *a word of the language is never `Fail`ed, with
 any fuel.*
 
-If `word ∈ language (A.start_nt init)`, the parser never answers `.Fail` on it —
+If `word ∈ G.language (A.start_nt init)`, the parser never answers `.Fail` on it —
 even with too little fuel (it answers `.Timeout` instead). Together with
 `parser_accepts` this is what makes `.Fail` a trustworthy "syntax error".
 
 Wraps the `Fail → False` case of `Main.parse_complete`. -/
 theorem parser_never_rejects_valid (init : A.InitState)
-    (hsafe : Main.safeValidator () = true) (hcomplete : Main.completeValidator () = true)
-    {word : List A.Token} (hmem : word ∈ language (A.start_nt init))
-    (bufferEnd : Buffer)
-    (fuel : Nat) (st : A.State) (tok : A.Token) :
+    (hsafe : Main.safeValidator A = true) (hcomplete : Main.completeValidator A = true)
+    {word : List G.Token} (hmem : word ∈ G.language (A.start_nt init))
+    (bufferEnd : Buffer G)
+    (fuel : Nat) (st : A.State) (tok : G.Token) :
     Main.parse init hsafe fuel (word ++ₛ bufferEnd) ≠ .Fail st tok := by
   obtain ⟨tree⟩ := hmem
   intro hp
@@ -168,14 +168,14 @@ semantic actions happen to collapse (e.g. identity coercion chains) are not
 distinguished. To obtain tree-level (grammatical) unambiguity, instantiate the
 semantic values with the syntax trees themselves.
 
-Wraps `Main.unambiguity` (Coq `Main.unambiguity`; `[Nonempty A.Token]` is the
+Wraps `Main.unambiguity` (Coq `Main.unambiguity`; `[Nonempty G.Token]` is the
 honest rendering of Coq's `inhabited token` — the witness is proof-only). -/
-theorem grammar_unambiguous [Nonempty A.Token]
-    (hsafe : Main.safeValidator () = true) (hcomplete : Main.completeValidator () = true)
-    (init : A.InitState) (word : List A.Token)
-    (tree1 tree2 : ParseTree (.NT (A.start_nt init)) word) :
+theorem grammar_unambiguous [Nonempty G.Token]
+    (hsafe : Main.safeValidator A = true) (hcomplete : Main.completeValidator A = true)
+    (init : A.InitState) (word : List G.Token)
+    (tree1 tree2 : ParseTree G (.NT (A.start_nt init)) word) :
     ptSem tree1 = ptSem tree2 := by
-  obtain ⟨tok⟩ := ‹Nonempty A.Token›
+  obtain ⟨tok⟩ := ‹Nonempty G.Token›
   exact Main.unambiguity hsafe hcomplete tok init word tree1 tree2
 
 /-! ## 4. Exact consumption (EOF anchoring) -/
@@ -192,14 +192,14 @@ input `Buf.ofListEof toks eofTok` means the recognised word is **exactly**
 
 Wraps `Main.parse_correct_anchored` (no Coq counterpart; leak-3 fix). -/
 theorem parser_consumes_exactly (init : A.InitState)
-    (hsafe : Main.safeValidator () = true) (fuel : Nat)
-    (toks : List A.Token) (eofTok : A.Token)
-    (hanch : EofAnchored (A.token_term eofTok) (A.start_nt init))
-    (hlex : ∀ tok ∈ toks, A.token_term tok ≠ A.token_term eofTok)
-    {sem : A.symbol_semantic_type (.NT (A.start_nt init))} {rest : Buffer}
+    (hsafe : Main.safeValidator A = true) (fuel : Nat)
+    (toks : List G.Token) (eofTok : G.Token)
+    (hanch : EofAnchored (G.token_term eofTok) (A.start_nt init))
+    (hlex : ∀ tok ∈ toks, G.token_term tok ≠ G.token_term eofTok)
+    {sem : G.symbol_semantic_type (.NT (A.start_nt init))} {rest : Buffer G}
     (h : Main.parse init hsafe fuel (Buf.ofListEof toks eofTok) = .Parsed sem rest) :
-    toks ++ [eofTok] ∈ language (A.start_nt init) ∧
-      ∃ pt : ParseTree (.NT (A.start_nt init)) (toks ++ [eofTok]), ptSem pt = sem :=
+    toks ++ [eofTok] ∈ G.language (A.start_nt init) ∧
+      ∃ pt : ParseTree G (.NT (A.start_nt init)) (toks ++ [eofTok]), ptSem pt = sem :=
   have ⟨pt, hsem⟩ := Main.parse_correct_anchored init hsafe fuel toks eofTok hanch hlex h
   ⟨⟨pt⟩, pt, hsem⟩
 
@@ -215,12 +215,12 @@ distinguish denotationally equal buffers). -/
 the padded input stream derives from the start symbol with value `v`.
 (For "the whole input", see `runtime_consumes_exactly`.) -/
 theorem runtime_sound {E : Type} (init : A.InitState)
-    (hsafe : Main.safeValidator () = true) (eof : A.Token) (toks : List A.Token)
-    (onFail : A.State → A.Token → E) (onTimeout : E)
+    (hsafe : Main.safeValidator A = true) (eof : G.Token) (toks : List G.Token)
+    (onFail : A.State → G.Token → E) (onTimeout : E)
     {v : Runtime.ResultType A init}
     (h : Runtime.parseList init hsafe eof toks onFail onTimeout = .ok v) :
-    ∃ (word : List A.Token) (rest : Buffer)
-      (pt : ParseTree (.NT (A.start_nt init)) word),
+    ∃ (word : List G.Token) (rest : Buffer G)
+      (pt : ParseTree G (.NT (A.start_nt init)) word),
       (Buf.ofListEof toks eof).get = (word ++ₛ rest).get ∧ ptSem pt = v := by
   unfold Runtime.parseList at h
   cases hp : Main.parse init hsafe (Runtime.fuelFor toks.length) (Buf.ofListEof toks eof) with
@@ -240,10 +240,10 @@ returns exactly its semantic value.
 
 Wraps `Runtime.parseList_complete_sized` (leak-1 + leak-4 fixes). -/
 theorem runtime_complete {E : Type} (init : A.InitState)
-    (hsafe : Main.safeValidator () = true) (hcomplete : Main.completeValidator () = true)
-    (eof : A.Token) (toks : List A.Token)
-    (onFail : A.State → A.Token → E) (onTimeout : E) (k : Nat)
-    (tree : ParseTree (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
+    (hsafe : Main.safeValidator A = true) (hcomplete : Main.completeValidator A = true)
+    (eof : G.Token) (toks : List G.Token)
+    (onFail : A.State → G.Token → E) (onTimeout : E) (k : Nat)
+    (tree : ParseTree G (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
     (hsize : ptSize tree ≤ 2 ^ 64) :
     Runtime.parseList init hsafe eof toks onFail onTimeout = .ok (ptSem tree) :=
   Runtime.parseList_complete_sized init hsafe hcomplete eof toks onFail onTimeout k tree hsize
@@ -254,21 +254,21 @@ else) was parsed, with `v` the semantics of one of its derivations.
 
 Wraps `Runtime.parseList_sound_anchored` (leak-3 fix). -/
 theorem runtime_consumes_exactly {E : Type} (init : A.InitState)
-    (hsafe : Main.safeValidator () = true) (eof : A.Token) (toks : List A.Token)
-    (onFail : A.State → A.Token → E) (onTimeout : E)
-    (hanch : EofAnchored (A.token_term eof) (A.start_nt init))
-    (hlex : ∀ tok ∈ toks, A.token_term tok ≠ A.token_term eof)
+    (hsafe : Main.safeValidator A = true) (eof : G.Token) (toks : List G.Token)
+    (onFail : A.State → G.Token → E) (onTimeout : E)
+    (hanch : EofAnchored (G.token_term eof) (A.start_nt init))
+    (hlex : ∀ tok ∈ toks, G.token_term tok ≠ G.token_term eof)
     {v : Runtime.ResultType A init}
     (h : Runtime.parseList init hsafe eof toks onFail onTimeout = .ok v) :
-    toks ++ [eof] ∈ language (A.start_nt init) ∧
-      ∃ pt : ParseTree (.NT (A.start_nt init)) (toks ++ [eof]), ptSem pt = v :=
+    toks ++ [eof] ∈ G.language (A.start_nt init) ∧
+      ∃ pt : ParseTree G (.NT (A.start_nt init)) (toks ++ [eof]), ptSem pt = v :=
   have ⟨pt, hsem⟩ :=
     Runtime.parseList_sound_anchored init hsafe eof toks onFail onTimeout hanch hlex h
   ⟨⟨pt⟩, pt, hsem⟩
 
 /-! ## 6. The theorems are about *your* grammar -/
 
-omit A in
+omit G A in
 /-- **Grammar faithfulness** — *the grammar all theorems above quantify over is
 exactly the `Grammar0` you wrote.*
 
@@ -279,7 +279,7 @@ automaton **for the wrong grammar**. The decidable check `tablesMatchGrammar`
 the verified bridges consume — jump-table fields *and* plain arrays — against
 your `Grammar0`, with every index in range, so the `Fin` padding never clamps
 and the dummy symbols stay unreachable. This proposition is what ties
-`ParseTree` in the theorems above to the grammar a human reviews.
+`ParseTree G` in the theorems above to the grammar a human reviews.
 
 Wraps `Gen.tablesMatchGrammar_spec` (no Coq counterpart; leak-2 fix). See also
 the faithfulness lemmas `TablesMatchGrammar.prodLhsOf_val`,

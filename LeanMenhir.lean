@@ -18,6 +18,7 @@ import LeanMenhir.Runtime
 import LeanMenhir.Guarantees
 import LeanMenhir.Generator.FinAlphabet
 import LeanMenhir.Generator.Tables
+import LeanMenhir.Generator.Grammar0
 import LeanMenhir.Generator.LR1
 import LeanMenhir.Generator.BuildTables
 import LeanMenhir.Generator.GrammarCheck

@@ -107,62 +107,66 @@ structure Item (Terminal Production : Type) where
 
 /-! ### The automaton interface -/
 
-/-- The automaton interface, mirroring Coq `Automaton.T` (which bundles `AutInit`,
-`Types`, and the table/annotation parameters). Extends `Grammar`. -/
-class Automaton extends Grammar where
+/-- An LR machine **for** grammar `G` (Coq `Automaton.T` bundled the grammar via
+a module functor; here `G` is an explicit structure parameter, so `Automaton G`
+visibly means "an automaton for the grammar `G`"). The fields from
+`past_symb_of_non_init_state` on are *validator annotations*: untrusted
+certificate data consumed only by the safety/completeness validators, never by
+the interpreter's computation. -/
+structure Automaton (G : Grammar) where
   NonInitState : Type
   noninitstateAlphabet : Alphabet NonInitState
   InitState : Type
   initstateAlphabet : Alphabet InitState
   /-- When in this state, this symbol is known to be on top of the stack. -/
-  last_symb_of_non_init_state : NonInitState → Symbol Terminal Nonterminal
+  last_symb_of_non_init_state : NonInitState → Symbol G.Terminal G.Nonterminal
   /-- For each initial state, the nonterminal it recognises. -/
-  start_nt : InitState → Nonterminal
+  start_nt : InitState → G.Nonterminal
   /-- The action table. -/
   action_table : State InitState NonInitState →
-    Action last_symb_of_non_init_state Production
+    Action last_symb_of_non_init_state G.Production
   /-- The goto table. -/
-  goto_table : State InitState NonInitState → (nt : Nonterminal) →
+  goto_table : State InitState NonInitState → (nt : G.Nonterminal) →
     Option { s : NonInitState // Symbol.NT nt = last_symb_of_non_init_state s }
   /-- Symbols known to be just below the top of the stack in this state. -/
-  past_symb_of_non_init_state : NonInitState → List (Symbol Terminal Nonterminal)
+  past_symb_of_non_init_state : NonInitState → List (Symbol G.Terminal G.Nonterminal)
   /-- Predicates the strictly-previous states satisfy in this state. -/
   past_state_of_non_init_state : NonInitState → List (State InitState NonInitState → Bool)
   /-- The items of a state. -/
-  items_of_state : State InitState NonInitState → List (Item Terminal Production)
+  items_of_state : State InitState NonInitState → List (Item G.Terminal G.Production)
   /-- True iff the nonterminal can produce the empty string. -/
-  nullable_nterm : Nonterminal → Bool
+  nullable_nterm : G.Nonterminal → Bool
   /-- Terminals that can begin a word produced by the nonterminal. -/
-  first_nterm : Nonterminal → List Terminal
+  first_nterm : G.Nonterminal → List G.Terminal
   /-- An over-approximation of the automaton's defined gotos: it must contain every
   `(s, nt)` for which `goto_table s nt` is defined (see `goto_enum_complete`). The
   goto-based safety validators iterate this list — the *defined* gotos, which are
   sparse — instead of probing every `(state, nonterminal)` pair (the dominant
   kernel-`rfl` cost). Table bridges supply the sparse list from `gotoBT.toList`;
   small/array bridges may supply the dense enumeration of all pairs. -/
-  goto_enum : List (State InitState NonInitState × Nonterminal)
+  goto_enum : List (State InitState NonInitState × G.Nonterminal)
   /-- `goto_enum` covers every defined goto. This is what makes iterating
   `goto_enum` sound: a `(s, nt)` whose goto is defined cannot be skipped. -/
-  goto_enum_complete : ∀ (s : State InitState NonInitState) (nt : Nonterminal),
+  goto_enum_complete : ∀ (s : State InitState NonInitState) (nt : G.Nonterminal),
     goto_table s nt ≠ none → (s, nt) ∈ goto_enum
 
-instance instNonInitStateAlphabet [A : Automaton] : Alphabet A.NonInitState :=
-  A.noninitstateAlphabet
-instance instInitStateAlphabet [A : Automaton] : Alphabet A.InitState :=
-  A.initstateAlphabet
+instance instNonInitStateAlphabet {G : Grammar} (A : Automaton G) :
+    Alphabet A.NonInitState := A.noninitstateAlphabet
+instance instInitStateAlphabet {G : Grammar} (A : Automaton G) :
+    Alphabet A.InitState := A.initstateAlphabet
 
 namespace Automaton
-variable (A : Automaton)
+variable {G : Grammar} (A : Automaton G)
 
 /-- The state type of the automaton. -/
 abbrev State : Type := LeanMenhir.State A.InitState A.NonInitState
 /-- The action type of the automaton. -/
-abbrev Action : Type := LeanMenhir.Action A.last_symb_of_non_init_state A.Production
+abbrev Action : Type := LeanMenhir.Action A.last_symb_of_non_init_state G.Production
 /-- The lookahead-action type of the automaton at terminal `term`. -/
-abbrev LookaheadAction (term : A.Terminal) : Type :=
-  LeanMenhir.LookaheadAction A.last_symb_of_non_init_state A.Production term
+abbrev LookaheadAction (term : G.Terminal) : Type :=
+  LeanMenhir.LookaheadAction A.last_symb_of_non_init_state G.Production term
 /-- The item type of the automaton. -/
-abbrev Item : Type := LeanMenhir.Item A.Terminal A.Production
+abbrev Item : Type := LeanMenhir.Item G.Terminal G.Production
 
 end Automaton
 

@@ -6,7 +6,7 @@ This Lean port is a derivative work, distributed under LGPL-3.0-or-later.
 
 The safety validator: definitions of the automaton invariants (`shiftHeadSymbs`,
 `gotoHeadSymbs`, …, `reduceOk`, bundled as `safe`), the boolean validator
-`isSafe`, and the proof that `isSafe () = true → safe`. Soundness of the
+`isSafe`, and the proof that `isSafe A = true → safe A`. Soundness of the
 interpreter holds whenever this validator accepts the tables.
 -/
 import LeanMenhir.Automaton
@@ -84,7 +84,7 @@ theorem PrefixPred.inv_cons {st : Type} {f1 f2 : st → Bool} {l1 l2 : List (st 
   cases h with
   | cons _ _ himpl h' => exact ⟨himpl, h'⟩
 
-variable [A : Automaton]
+variable {G : Grammar} {A : Automaton G}
 
 /-! ### State annotations -/
 
@@ -102,7 +102,7 @@ def pastStateOfState : A.State → List (A.State → Bool)
 
 /-- The known top symbols of a state: its last symbol then its past symbols
 (Coq `head_symbs_of_state`). -/
-def headSymbsOfState : A.State → List (Symbol A.Terminal A.Nonterminal)
+def headSymbsOfState : A.State → List (Symbol G.Terminal G.Nonterminal)
   | .Init _ => []
   | .Ninit s => A.last_symb_of_non_init_state s :: A.past_symb_of_non_init_state s
 
@@ -132,14 +132,14 @@ theorem isPrefixPred_correct :
 /-- The states possible after popping the given symbols, given the state's
 annotation (Coq `state_valid_after_pop`). -/
 inductive StateValidAfterPop (s : A.State) :
-    List (Symbol A.Terminal A.Nonterminal) → List (A.State → Bool) → Prop
+    List (Symbol G.Terminal G.Nonterminal) → List (A.State → Bool) → Prop
   | nil1 (p : A.State → Bool) (pl) : p s = true → StateValidAfterPop s [] (p :: pl)
   | nil2 (sl) : StateValidAfterPop s sl []
   | cons (st sq p pl) : StateValidAfterPop s sq pl →
       StateValidAfterPop s (st :: sq) (p :: pl)
 
 /-- Boolean test for `StateValidAfterPop` (Coq `is_state_valid_after_pop`). -/
-def isStateValidAfterPop (s : A.State) (toPop : List (Symbol A.Terminal A.Nonterminal))
+def isStateValidAfterPop (s : A.State) (toPop : List (Symbol G.Terminal G.Nonterminal))
     (annot : List (A.State → Bool)) : Bool :=
   match annot, toPop with
   | [], _ => true
@@ -157,7 +157,7 @@ theorem isStateValidAfterPop_complete {s : A.State} {sl pl}
 
 /-- If we shift, the destination's past symbols prefix the source's head symbols
 (Coq `shift_head_symbs`). -/
-def shiftHeadSymbs : Prop :=
+def shiftHeadSymbs (A : Automaton G) : Prop :=
   ∀ s, match A.action_table s with
     | .Lookahead_act awp => ∀ t, match awp t with
         | .Shift_act s2 _ =>
@@ -166,13 +166,13 @@ def shiftHeadSymbs : Prop :=
     | _ => True
 
 /-- Same, for gotos (Coq `goto_head_symbs`). -/
-def gotoHeadSymbs : Prop :=
+def gotoHeadSymbs (A : Automaton G) : Prop :=
   ∀ s nt, match A.goto_table s nt with
     | some ⟨s2, _⟩ => Prefix (A.past_symb_of_non_init_state s2) (headSymbsOfState s)
     | none => True
 
 /-- The state-stack assumptions are preserved by shift (Coq `shift_past_state`). -/
-def shiftPastState : Prop :=
+def shiftPastState (A : Automaton G) : Prop :=
   ∀ s, match A.action_table s with
     | .Lookahead_act awp => ∀ t, match awp t with
         | .Shift_act s2 _ =>
@@ -181,23 +181,23 @@ def shiftPastState : Prop :=
     | _ => True
 
 /-- Same, for gotos (Coq `goto_past_state`). -/
-def gotoPastState : Prop :=
+def gotoPastState (A : Automaton G) : Prop :=
   ∀ s nt, match A.goto_table s nt with
     | some ⟨s2, _⟩ => PrefixPred (A.past_state_of_non_init_state s2) (headStatesOfState s)
     | none => True
 
 /-- A state is valid for reducing a production (Coq `valid_for_reduce`). -/
-def validForReduce (s : A.State) (prod : A.Production) : Prop :=
-  Prefix (A.prod_rhs_rev prod) (headSymbsOfState s) ∧
-  ∀ stateNew, StateValidAfterPop stateNew (A.prod_rhs_rev prod) (headStatesOfState s) →
-    match A.goto_table stateNew (A.prod_lhs prod) with
+def validForReduce (s : A.State) (prod : G.Production) : Prop :=
+  Prefix (G.prod_rhs_rev prod) (headSymbsOfState s) ∧
+  ∀ stateNew, StateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) →
+    match A.goto_table stateNew (G.prod_lhs prod) with
     | none => match stateNew with
-        | .Init i => A.prod_lhs prod = A.start_nt i
+        | .Init i => G.prod_lhs prod = A.start_nt i
         | .Ninit _ => False
     | some _ => True
 
 /-- Every state that reduces is valid for reduction (Coq `reduce_ok`). -/
-def reduceOk : Prop :=
+def reduceOk (A : Automaton G) : Prop :=
   ∀ s, match A.action_table s with
     | .Lookahead_act awp => ∀ t, match awp t with
         | .Reduce_act p => validForReduce s p
@@ -205,50 +205,50 @@ def reduceOk : Prop :=
     | .Default_reduce_act p => validForReduce s p
 
 /-- The automaton is safe (Coq `safe`). -/
-def safe : Prop :=
-  shiftHeadSymbs ∧ gotoHeadSymbs ∧ shiftPastState ∧ gotoPastState ∧ reduceOk
+def safe (A : Automaton G) : Prop :=
+  shiftHeadSymbs A ∧ gotoHeadSymbs A ∧ shiftPastState A ∧ gotoPastState A ∧ reduceOk A
 
-theorem shiftHeadSymbs_of_safe (h : safe) : shiftHeadSymbs := h.1
-theorem gotoHeadSymbs_of_safe (h : safe) : gotoHeadSymbs := h.2.1
-theorem shiftPastState_of_safe (h : safe) : shiftPastState := h.2.2.1
-theorem gotoPastState_of_safe (h : safe) : gotoPastState := h.2.2.2.1
-theorem reduceOk_of_safe (h : safe) : reduceOk := h.2.2.2.2
+theorem shiftHeadSymbs_of_safe (h : safe A) : shiftHeadSymbs A := h.1
+theorem gotoHeadSymbs_of_safe (h : safe A) : gotoHeadSymbs A := h.2.1
+theorem shiftPastState_of_safe (h : safe A) : shiftPastState A := h.2.2.1
+theorem gotoPastState_of_safe (h : safe A) : gotoPastState A := h.2.2.2.1
+theorem reduceOk_of_safe (h : safe A) : reduceOk A := h.2.2.2.2
 
 /-! ### The boolean validator -/
 
 /-- Boolean test for `validForReduce`. -/
-def isValidForReduce (s : A.State) (prod : A.Production) : Bool :=
-  isPrefix (A.prod_rhs_rev prod) (headSymbsOfState s) &&
+def isValidForReduce (s : A.State) (prod : G.Production) : Bool :=
+  isPrefix (G.prod_rhs_rev prod) (headSymbsOfState s) &&
   Allb A.State (fun stateNew =>
-    if isStateValidAfterPop stateNew (A.prod_rhs_rev prod) (headStatesOfState s) then
-      match A.goto_table stateNew (A.prod_lhs prod) with
+    if isStateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) then
+      match A.goto_table stateNew (G.prod_lhs prod) with
       | none => match stateNew with
-          | .Init i => compareEqb (A.prod_lhs prod) (A.start_nt i)
+          | .Init i => compareEqb (G.prod_lhs prod) (A.start_nt i)
           | .Ninit _ => false
       | some _ => true
     else true)
 
-theorem isValidForReduce_correct (s : A.State) (prod : A.Production) :
+theorem isValidForReduce_correct (s : A.State) (prod : G.Production) :
     isValidForReduce s prod = true → validForReduce s prod := by
   intro h
   simp only [isValidForReduce, Bool.and_eq_true] at h
   obtain ⟨hpref, hall⟩ := h
   refine ⟨isPrefix_correct _ _ hpref, ?_⟩
   intro stateNew hvalid
-  have hsv : isStateValidAfterPop stateNew (A.prod_rhs_rev prod) (headStatesOfState s) = true :=
+  have hsv : isStateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) = true :=
     isStateValidAfterPop_complete hvalid
   have key := forall_of_Allb (f := fun stateNew =>
-      if isStateValidAfterPop stateNew (A.prod_rhs_rev prod) (headStatesOfState s) then
-        match A.goto_table stateNew (A.prod_lhs prod) with
+      if isStateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) then
+        match A.goto_table stateNew (G.prod_lhs prod) with
         | none => match stateNew with
-            | .Init i => compareEqb (A.prod_lhs prod) (A.start_nt i)
+            | .Init i => compareEqb (G.prod_lhs prod) (A.start_nt i)
             | .Ninit _ => false
         | some _ => true
       else true)
     (P := fun stateNew => _) (fun x hx => hx) hall stateNew
   simp only [hsv, if_true] at key
   revert key
-  cases hg : A.goto_table stateNew (A.prod_lhs prod) with
+  cases hg : A.goto_table stateNew (G.prod_lhs prod) with
   | some v => intro _; trivial
   | none =>
     cases stateNew with
@@ -256,14 +256,14 @@ theorem isValidForReduce_correct (s : A.State) (prod : A.Production) :
     | Ninit n => intro hk; exact absurd hk (by simp)
 
 /-- Boolean validator for `shiftHeadSymbs`. -/
-def isShiftHeadSymbs : Bool :=
+def isShiftHeadSymbs (A : Automaton G) : Bool :=
   Allb A.State (fun s => match A.action_table s with
-    | .Lookahead_act awp => Allb A.Terminal (fun t => match awp t with
+    | .Lookahead_act awp => Allb G.Terminal (fun t => match awp t with
         | .Shift_act s2 _ => isPrefix (A.past_symb_of_non_init_state s2) (headSymbsOfState s)
         | _ => true)
     | _ => true)
 
-theorem isShiftHeadSymbs_correct : isShiftHeadSymbs = true → shiftHeadSymbs := by
+theorem isShiftHeadSymbs_correct : isShiftHeadSymbs A = true → shiftHeadSymbs A := by
   intro h
   refine forall_of_Allb (P := fun s => _) (fun s hs => ?_) h
   revert hs
@@ -281,13 +281,13 @@ theorem isShiftHeadSymbs_correct : isShiftHeadSymbs = true → shiftHeadSymbs :=
 /-- Boolean validator for `gotoHeadSymbs`. Iterates `A.goto_enum` (the *defined*
 gotos, sparse) instead of probing every `(state, nonterminal)` pair — sound because
 `A.goto_enum_complete` guarantees every defined goto is listed. -/
-def isGotoHeadSymbs : Bool :=
+def isGotoHeadSymbs (A : Automaton G) : Bool :=
   A.goto_enum.all (fun (s, nt) =>
     match A.goto_table s nt with
     | some ⟨s2, _⟩ => isPrefix (A.past_symb_of_non_init_state s2) (headSymbsOfState s)
     | none => true)
 
-theorem isGotoHeadSymbs_correct : isGotoHeadSymbs = true → gotoHeadSymbs := by
+theorem isGotoHeadSymbs_correct : isGotoHeadSymbs A = true → gotoHeadSymbs A := by
   intro h s nt
   cases hg : A.goto_table s nt with
   | none => trivial
@@ -301,15 +301,15 @@ theorem isGotoHeadSymbs_correct : isGotoHeadSymbs = true → gotoHeadSymbs := by
     exact isPrefix_correct _ _ hp
 
 /-- Boolean validator for `shiftPastState`. -/
-def isShiftPastState : Bool :=
+def isShiftPastState (A : Automaton G) : Bool :=
   Allb A.State (fun s => match A.action_table s with
-    | .Lookahead_act awp => Allb A.Terminal (fun t => match awp t with
+    | .Lookahead_act awp => Allb G.Terminal (fun t => match awp t with
         | .Shift_act s2 _ =>
             isPrefixPred (A.past_state_of_non_init_state s2) (headStatesOfState s)
         | _ => true)
     | _ => true)
 
-theorem isShiftPastState_correct : isShiftPastState = true → shiftPastState := by
+theorem isShiftPastState_correct : isShiftPastState A = true → shiftPastState A := by
   intro h
   refine forall_of_Allb (P := fun s => _) (fun s hs => ?_) h
   revert hs
@@ -326,13 +326,13 @@ theorem isShiftPastState_correct : isShiftPastState = true → shiftPastState :=
 
 /-- Boolean validator for `gotoPastState`. Iterates `A.goto_enum` (sparse) instead
 of probing every `(state, nonterminal)` pair; sound via `A.goto_enum_complete`. -/
-def isGotoPastState : Bool :=
+def isGotoPastState (A : Automaton G) : Bool :=
   A.goto_enum.all (fun (s, nt) =>
     match A.goto_table s nt with
     | some ⟨s2, _⟩ => isPrefixPred (A.past_state_of_non_init_state s2) (headStatesOfState s)
     | none => true)
 
-theorem isGotoPastState_correct : isGotoPastState = true → gotoPastState := by
+theorem isGotoPastState_correct : isGotoPastState A = true → gotoPastState A := by
   intro h s nt
   cases hg : A.goto_table s nt with
   | none => trivial
@@ -346,14 +346,14 @@ theorem isGotoPastState_correct : isGotoPastState = true → gotoPastState := by
     exact isPrefixPred_correct _ _ hp
 
 /-- Boolean validator for `reduceOk`. -/
-def isReduceOk : Bool :=
+def isReduceOk (A : Automaton G) : Bool :=
   Allb A.State (fun s => match A.action_table s with
     | .Default_reduce_act p => isValidForReduce s p
-    | .Lookahead_act awp => Allb A.Terminal (fun t => match awp t with
+    | .Lookahead_act awp => Allb G.Terminal (fun t => match awp t with
         | .Reduce_act p => isValidForReduce s p
         | _ => true))
 
-theorem isReduceOk_correct : isReduceOk = true → reduceOk := by
+theorem isReduceOk_correct : isReduceOk A = true → reduceOk A := by
   intro h
   refine forall_of_Allb (P := fun s => _) (fun s hs => ?_) h
   revert hs
@@ -369,12 +369,13 @@ theorem isReduceOk_correct : isReduceOk = true → reduceOk := by
     | Fail_act => intro _; trivial
 
 /-- The boolean safety validator (Coq `is_safe`). -/
-def isSafe (_ : Unit) : Bool :=
-  isShiftHeadSymbs && isGotoHeadSymbs && isShiftPastState && isGotoPastState && isReduceOk
+def isSafe (A : Automaton G) : Bool :=
+  isShiftHeadSymbs A && isGotoHeadSymbs A && isShiftPastState A && isGotoPastState A &&
+    isReduceOk A
 
-/-- The validator is correct: if `isSafe () = true`, the automaton is `safe`
+/-- The validator is correct: if `isSafe A = true`, the automaton is `safe`
 (Coq `safe_is_validator`). -/
-theorem safe_is_validator : isSafe () = true → safe := by
+theorem safe_is_validator : isSafe A = true → safe A := by
   intro h
   simp only [isSafe, Bool.and_eq_true] at h
   obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := h

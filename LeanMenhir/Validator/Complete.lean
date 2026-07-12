@@ -8,7 +8,7 @@ The completeness validator: definitions of the automaton invariants needed for
 completeness (`nullableStable`, `firstStable`, `startFuture`, `terminalShift`,
 `endReduce`, `nonTerminalGoto`, `startGoto`, `nonTerminalClosed`, bundled as
 `complete`), the boolean validator `isComplete`, and the proof that
-`isComplete () = true → complete`. Completeness of the interpreter holds whenever
+`isComplete A = true → complete A`. Completeness of the interpreter holds whenever
 this validator accepts the tables.
 
 Unlike the Coq version, which uses `Derive` to synthesise the validator from an
@@ -24,83 +24,84 @@ import LeanMenhir.Validator.Safe
 
 namespace LeanMenhir
 
-variable [A : Automaton]
+variable {G : Grammar} {A : Automaton G}
 
 /-! ### Nullable / first sets (as lists) -/
 
 /-- A symbol is nullable iff it is a nonterminal that can produce the empty
 string (Coq `nullable_symb`). -/
-def nullableSymb (s : Symbol A.Terminal A.Nonterminal) : Bool :=
+def nullableSymb (A : Automaton G) (s : Symbol G.Terminal G.Nonterminal) : Bool :=
   match s with
   | .NT nt => A.nullable_nterm nt
   | .T _ => false
 
 /-- A word (list of symbols) is nullable iff each of its symbols is
 (Coq `nullable_word`). -/
-def nullableWord (w : List (Symbol A.Terminal A.Nonterminal)) : Bool :=
-  w.all nullableSymb
+def nullableWord (A : Automaton G) (w : List (Symbol G.Terminal G.Nonterminal)) : Bool :=
+  w.all (nullableSymb A)
 
 /-- The FIRST set of a nonterminal, as the automaton's `first_nterm` list
 (Coq `first_nterm_set`). -/
-def firstNtermSet (nt : A.Nonterminal) : List A.Terminal := A.first_nterm nt
+def firstNtermSet (A : Automaton G) (nt : G.Nonterminal) : List G.Terminal :=
+  A.first_nterm nt
 
 /-- The FIRST set of a symbol (Coq `first_symb_set`). -/
-def firstSymbSet (s : Symbol A.Terminal A.Nonterminal) : List A.Terminal :=
+def firstSymbSet (A : Automaton G) (s : Symbol G.Terminal G.Nonterminal) : List G.Terminal :=
   match s with
-  | .NT nt => firstNtermSet nt
+  | .NT nt => firstNtermSet A nt
   | .T t => [t]
 
 /-- The FIRST set of a word (Coq `first_word_set`). -/
-def firstWordSet : List (Symbol A.Terminal A.Nonterminal) → List A.Terminal
+def firstWordSet (A : Automaton G) : List (Symbol G.Terminal G.Nonterminal) → List G.Terminal
   | [] => []
   | t :: q =>
-    if nullableSymb t then firstSymbSet t ++ firstWordSet q
-    else firstSymbSet t
+    if nullableSymb A t then firstSymbSet A t ++ firstWordSet A q
+    else firstSymbSet A t
 
 /-! ### Items and futures -/
 
 /-- The portion of production `prod`'s RHS that comes after `dotPos` symbols
 (Coq `future_of_prod`). Coq's hand-rolled `loop` is exactly `List.drop`. -/
-def futureOfProd (prod : A.Production) (dotPos : Nat) :
-    List (Symbol A.Terminal A.Nonterminal) :=
-  (A.prod_rhs_rev prod).reverse.drop dotPos
+def futureOfProd (prod : G.Production) (dotPos : Nat) :
+    List (Symbol G.Terminal G.Nonterminal) :=
+  (G.prod_rhs_rev prod).reverse.drop dotPos
 
 /-- The lookahead set recorded for the item `(state, prod, dotPos)`: the union of
 the lookaheads of all items of `state` with that core (Coq `find_items_map`
 applied to `items_map ()`). -/
-def findItemsMap (s : A.State) (prod : A.Production) (dotPos : Nat) : List A.Terminal :=
+def findItemsMap (s : A.State) (prod : G.Production) (dotPos : Nat) : List G.Terminal :=
   (A.items_of_state s).flatMap (fun it =>
     if it.prod_item = prod ∧ it.dot_pos_item = dotPos then it.lookaheads_item else [])
 
 /-- `state` predicts that production `prod` has `fut` after the dot, with
 `lookahead` as a valid lookahead (Coq `state_has_future`). -/
-def stateHasFuture (s : A.State) (prod : A.Production)
-    (fut : List (Symbol A.Terminal A.Nonterminal)) (lookahead : A.Terminal) : Prop :=
+def stateHasFuture (s : A.State) (prod : G.Production)
+    (fut : List (Symbol G.Terminal G.Nonterminal)) (lookahead : G.Terminal) : Prop :=
   ∃ dotPos : Nat,
     fut = futureOfProd prod dotPos ∧ lookahead ∈ findItemsMap s prod dotPos
 
 /-! ### The completeness invariants -/
 
 /-- The nullable predicate is a fixpoint (Coq `nullable_stable`). -/
-def nullableStable : Prop :=
-  ∀ p : A.Production,
-    if nullableWord (A.prod_rhs_rev p) then A.nullable_nterm (A.prod_lhs p) = true else True
+def nullableStable (A : Automaton G) : Prop :=
+  ∀ p : G.Production,
+    if nullableWord A (G.prod_rhs_rev p) then A.nullable_nterm (G.prod_lhs p) = true else True
 
 /-- The first predicate is a fixpoint (Coq `first_stable`). -/
-def firstStable : Prop :=
-  ∀ p : A.Production, ∀ t : A.Terminal,
-    t ∈ firstWordSet ((A.prod_rhs_rev p).reverse) → t ∈ firstNtermSet (A.prod_lhs p)
+def firstStable (A : Automaton G) : Prop :=
+  ∀ p : G.Production, ∀ t : G.Terminal,
+    t ∈ firstWordSet A ((G.prod_rhs_rev p).reverse) → t ∈ firstNtermSet A (G.prod_lhs p)
 
 /-- The initial state has all the `S → .u` items (Coq `start_future`). -/
-def startFuture : Prop :=
-  ∀ (init : A.InitState) (p : A.Production), A.prod_lhs p = A.start_nt init →
-    ∀ t : A.Terminal,
+def startFuture (A : Automaton G) : Prop :=
+  ∀ (init : A.InitState) (p : G.Production), G.prod_lhs p = A.start_nt init →
+    ∀ t : G.Terminal,
       stateHasFuture (.Init init) p (futureOfProd p 0) t
 
 /-- Reading a terminal `a` from an item `A → _.av[[b]]` shifts to a state with
 item `A → _.v[[b]]` (Coq `terminal_shift`). -/
-def terminalShift : Prop :=
-  ∀ (s1 : A.State) (prod : A.Production) (fut) (lookahead : A.Terminal),
+def terminalShift (A : Automaton G) : Prop :=
+  ∀ (s1 : A.State) (prod : G.Production) (fut) (lookahead : G.Terminal),
     stateHasFuture s1 prod fut lookahead →
     match fut with
     | .T t :: q =>
@@ -114,8 +115,8 @@ def terminalShift : Prop :=
 
 /-- An item `A → _.[[a]]` either default-reduces, or reduces on reading `a`
 (Coq `end_reduce`). -/
-def endReduce : Prop :=
-  ∀ (s : A.State) (prod : A.Production) (fut) (lookahead : A.Terminal),
+def endReduce (A : Automaton G) : Prop :=
+  ∀ (s : A.State) (prod : G.Production) (fut) (lookahead : G.Terminal),
     stateHasFuture s prod fut lookahead →
     match fut with
     | [] =>
@@ -129,8 +130,8 @@ def endReduce : Prop :=
 
 /-- From item `A → _.Bv[[b]]`, the goto table goes to a state with item
 `A → _.v[[b]]` (Coq `non_terminal_goto`). -/
-def nonTerminalGoto : Prop :=
-  ∀ (s1 : A.State) (prod : A.Production) (fut) (lookahead : A.Terminal),
+def nonTerminalGoto (A : Automaton G) : Prop :=
+  ∀ (s1 : A.State) (prod : G.Production) (fut) (lookahead : G.Terminal),
     stateHasFuture s1 prod fut lookahead →
     match fut with
     | .NT nt :: q =>
@@ -141,7 +142,7 @@ def nonTerminalGoto : Prop :=
 
 /-- The initial state has no goto on its own start nonterminal
 (Coq `start_goto`). -/
-def startGoto : Prop :=
+def startGoto (A : Automaton G) : Prop :=
   ∀ init : A.InitState,
     match A.goto_table (.Init init) (A.start_nt init) with
     | none => True
@@ -150,36 +151,36 @@ def startGoto : Prop :=
 /-- Closure property: from item `A → _.Bv[[b]]`, for each production `B → u` and
 each `a ∈ first(vb)`, the state has item `B → _.u[[a]]` (Coq
 `non_terminal_closed`). -/
-def nonTerminalClosed : Prop :=
-  ∀ (s1 : A.State) (prod : A.Production) (fut) (lookahead : A.Terminal),
+def nonTerminalClosed (A : Automaton G) : Prop :=
+  ∀ (s1 : A.State) (prod : G.Production) (fut) (lookahead : G.Terminal),
     stateHasFuture s1 prod fut lookahead →
     match fut with
     | .NT nt :: q =>
-      ∀ p : A.Production, A.prod_lhs p = nt →
-        (if nullableWord q then stateHasFuture s1 p (futureOfProd p 0) lookahead else True) ∧
-        (∀ lookahead2 : A.Terminal,
-          lookahead2 ∈ firstWordSet q → stateHasFuture s1 p (futureOfProd p 0) lookahead2)
+      ∀ p : G.Production, G.prod_lhs p = nt →
+        (if nullableWord A q then stateHasFuture s1 p (futureOfProd p 0) lookahead else True) ∧
+        (∀ lookahead2 : G.Terminal,
+          lookahead2 ∈ firstWordSet A q → stateHasFuture s1 p (futureOfProd p 0) lookahead2)
     | _ => True
 
 /-- The automaton is complete (Coq `complete`). -/
-def complete : Prop :=
-  nullableStable ∧ firstStable ∧ startFuture ∧ terminalShift
-  ∧ endReduce ∧ nonTerminalGoto ∧ startGoto ∧ nonTerminalClosed
+def complete (A : Automaton G) : Prop :=
+  nullableStable A ∧ firstStable A ∧ startFuture A ∧ terminalShift A
+  ∧ endReduce A ∧ nonTerminalGoto A ∧ startGoto A ∧ nonTerminalClosed A
 
-theorem nullableStable_of_complete (h : complete) : nullableStable := h.1
-theorem firstStable_of_complete (h : complete) : firstStable := h.2.1
-theorem startFuture_of_complete (h : complete) : startFuture := h.2.2.1
-theorem terminalShift_of_complete (h : complete) : terminalShift := h.2.2.2.1
-theorem endReduce_of_complete (h : complete) : endReduce := h.2.2.2.2.1
-theorem nonTerminalGoto_of_complete (h : complete) : nonTerminalGoto := h.2.2.2.2.2.1
-theorem startGoto_of_complete (h : complete) : startGoto := h.2.2.2.2.2.2.1
-theorem nonTerminalClosed_of_complete (h : complete) : nonTerminalClosed := h.2.2.2.2.2.2.2
+theorem nullableStable_of_complete (h : complete A) : nullableStable A := h.1
+theorem firstStable_of_complete (h : complete A) : firstStable A := h.2.1
+theorem startFuture_of_complete (h : complete A) : startFuture A := h.2.2.1
+theorem terminalShift_of_complete (h : complete A) : terminalShift A := h.2.2.2.1
+theorem endReduce_of_complete (h : complete A) : endReduce A := h.2.2.2.2.1
+theorem nonTerminalGoto_of_complete (h : complete A) : nonTerminalGoto A := h.2.2.2.2.2.1
+theorem startGoto_of_complete (h : complete A) : startGoto A := h.2.2.2.2.2.2.1
+theorem nonTerminalClosed_of_complete (h : complete A) : nonTerminalClosed A := h.2.2.2.2.2.2.2
 
 /-! ### Helper lemmas -/
 
 /-- Membership in `findItemsMap` comes from a witnessing item. -/
-theorem mem_findItemsMap {s : A.State} {prod : A.Production} {dotPos : Nat}
-    {look : A.Terminal} (h : look ∈ findItemsMap s prod dotPos) :
+theorem mem_findItemsMap {s : A.State} {prod : G.Production} {dotPos : Nat}
+    {look : G.Terminal} (h : look ∈ findItemsMap s prod dotPos) :
     ∃ it ∈ A.items_of_state s,
       it.prod_item = prod ∧ it.dot_pos_item = dotPos ∧ look ∈ it.lookaheads_item := by
   unfold findItemsMap at h
@@ -191,14 +192,14 @@ theorem mem_findItemsMap {s : A.State} {prod : A.Production} {dotPos : Nat}
   · simp only [hc, if_false, List.not_mem_nil] at hlook
 
 /-- Membership in a lookahead set yields a `stateHasFuture`. -/
-theorem stateHasFuture_of_mem {s : A.State} {prod : A.Production} {dotPos : Nat}
-    {look : A.Terminal} (h : look ∈ findItemsMap s prod dotPos) :
+theorem stateHasFuture_of_mem {s : A.State} {prod : G.Production} {dotPos : Nat}
+    {look : G.Terminal} (h : look ∈ findItemsMap s prod dotPos) :
     stateHasFuture s prod (futureOfProd prod dotPos) look :=
   ⟨dotPos, rfl, h⟩
 
 /-- Dropping one more symbol from a future. -/
-theorem futureOfProd_succ {prod : A.Production} {pos : Nat}
-    {x : Symbol A.Terminal A.Nonterminal} {q} (h : futureOfProd prod pos = x :: q) :
+theorem futureOfProd_succ {prod : G.Production} {pos : Nat}
+    {x : Symbol G.Terminal G.Nonterminal} {q} (h : futureOfProd prod pos = x :: q) :
     futureOfProd prod (pos + 1) = q := by
   unfold futureOfProd at h ⊢
   rw [← List.drop_drop, h, List.drop_succ_cons, List.drop_zero]
@@ -206,16 +207,17 @@ theorem futureOfProd_succ {prod : A.Production} {pos : Nat}
 /-! ### The "for all items" combinator -/
 
 /-- Boolean iteration over every item (and every lookahead) of every state. -/
-def allbItems (b : A.State → A.Production → Nat → A.Terminal → Bool) : Bool :=
+def allbItems (A : Automaton G)
+    (b : A.State → G.Production → Nat → G.Terminal → Bool) : Bool :=
   Allb A.State (fun s =>
     (A.items_of_state s).all (fun it =>
       it.lookaheads_item.all (fun look => b s it.prod_item it.dot_pos_item look)))
 
 theorem allbItems_correct
-    {Q : A.State → A.Production → List (Symbol A.Terminal A.Nonterminal) → A.Terminal → Prop}
-    {b : A.State → A.Production → Nat → A.Terminal → Bool}
+    {Q : A.State → G.Production → List (Symbol G.Terminal G.Nonterminal) → G.Terminal → Prop}
+    {b : A.State → G.Production → Nat → G.Terminal → Bool}
     (hb : ∀ s prod pos look, b s prod pos look = true → Q s prod (futureOfProd prod pos) look)
-    (hall : allbItems b = true) :
+    (hall : allbItems A b = true) :
     ∀ s prod fut look, stateHasFuture s prod fut look → Q s prod fut look := by
   intro s prod fut look hsf
   obtain ⟨dotPos, hfut, hmem⟩ := hsf
@@ -234,24 +236,24 @@ theorem allbItems_correct
 /-! ### The eight boolean validators -/
 
 /-- Boolean validator for `nullableStable`. -/
-def isNullableStable : Bool :=
-  Allb A.Production (fun p => implb (nullableWord (A.prod_rhs_rev p)) (A.nullable_nterm (A.prod_lhs p)))
+def isNullableStable (A : Automaton G) : Bool :=
+  Allb G.Production (fun p => implb (nullableWord A (G.prod_rhs_rev p)) (A.nullable_nterm (G.prod_lhs p)))
 
-theorem isNullableStable_correct : isNullableStable = true → nullableStable := by
+theorem isNullableStable_correct : isNullableStable A = true → nullableStable A := by
   intro h
   refine forall_of_Allb (P := fun p => _) (fun p hp => ?_) h
   rw [implb_eq_true] at hp
-  by_cases hc : nullableWord (A.prod_rhs_rev p) = true
+  by_cases hc : nullableWord A (G.prod_rhs_rev p) = true
   · simp only [hc, if_true]; exact hp hc
   · simp only [Bool.not_eq_true] at hc; simp only [hc, Bool.false_eq_true, if_false]
 
 /-- Boolean validator for `firstStable`. -/
-def isFirstStable : Bool :=
-  Allb A.Production (fun p =>
-    (firstWordSet ((A.prod_rhs_rev p).reverse)).all
-      (fun t => decide (t ∈ firstNtermSet (A.prod_lhs p))))
+def isFirstStable (A : Automaton G) : Bool :=
+  Allb G.Production (fun p =>
+    (firstWordSet A ((G.prod_rhs_rev p).reverse)).all
+      (fun t => decide (t ∈ firstNtermSet A (G.prod_lhs p))))
 
-theorem isFirstStable_correct : isFirstStable = true → firstStable := by
+theorem isFirstStable_correct : isFirstStable A = true → firstStable A := by
   intro h
   refine forall_of_Allb (P := fun p => _) (fun p hp => ?_) h
   intro t ht
@@ -259,13 +261,13 @@ theorem isFirstStable_correct : isFirstStable = true → firstStable := by
   exact of_decide_eq_true (hp t ht)
 
 /-- Boolean validator for `startGoto`. -/
-def isStartGoto : Bool :=
+def isStartGoto (A : Automaton G) : Bool :=
   Allb A.InitState (fun init =>
     match A.goto_table (.Init init) (A.start_nt init) with
     | none => true
     | some _ => false)
 
-theorem isStartGoto_correct : isStartGoto = true → startGoto := by
+theorem isStartGoto_correct : isStartGoto A = true → startGoto A := by
   intro h
   refine forall_of_Allb (P := fun init => _) (fun init hi => ?_) h
   revert hi
@@ -274,22 +276,22 @@ theorem isStartGoto_correct : isStartGoto = true → startGoto := by
   | some v => intro hi; simp at hi
 
 /-- Boolean validator for `startFuture`. -/
-def isStartFuture : Bool :=
+def isStartFuture (A : Automaton G) : Bool :=
   Allb A.InitState (fun init =>
-    Allb A.Production (fun p =>
-      implb (compareEqb (A.prod_lhs p) (A.start_nt init))
-        (Allb A.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0)))))
+    Allb G.Production (fun p =>
+      implb (compareEqb (G.prod_lhs p) (A.start_nt init))
+        (Allb G.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0)))))
 
-theorem isStartFuture_correct : isStartFuture = true → startFuture := by
+theorem isStartFuture_correct : isStartFuture A = true → startFuture A := by
   intro h
   refine forall_of_Allb (P := fun init => _) (fun init hi => ?_) h
   intro p hlhs t
   have hp := forall_of_Allb
-    (P := fun p => implb (compareEqb (A.prod_lhs p) (A.start_nt init))
-      (Allb A.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0))) = true)
+    (P := fun p => implb (compareEqb (G.prod_lhs p) (A.start_nt init))
+      (Allb G.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0))) = true)
     (fun p hp => hp) hi p
   rw [implb_eq_true] at hp
-  have hcmp : compareEqb (A.prod_lhs p) (A.start_nt init) = true := (compareEqb_iff _ _).2 hlhs
+  have hcmp : compareEqb (G.prod_lhs p) (A.start_nt init) = true := (compareEqb_iff _ _).2 hlhs
   have hall := hp hcmp
   have ht := forall_of_Allb
     (P := fun t => decide (t ∈ findItemsMap (.Init init) p 0) = true)
@@ -297,8 +299,8 @@ theorem isStartFuture_correct : isStartFuture = true → startFuture := by
   exact stateHasFuture_of_mem (of_decide_eq_true ht)
 
 /-- Boolean validator for `terminalShift`. -/
-def isTerminalShift : Bool :=
-  allbItems (fun s prod pos look =>
+def isTerminalShift (A : Automaton G) : Bool :=
+  allbItems A (fun s prod pos look =>
     match futureOfProd prod pos with
     | .T t :: _ =>
       match A.action_table s with
@@ -309,7 +311,7 @@ def isTerminalShift : Bool :=
       | _ => false
     | _ => true)
 
-theorem isTerminalShift_correct : isTerminalShift = true → terminalShift := by
+theorem isTerminalShift_correct : isTerminalShift A = true → terminalShift A := by
   intro h
   refine allbItems_correct (Q := fun s prod fut look =>
     match fut with
@@ -339,8 +341,8 @@ theorem isTerminalShift_correct : isTerminalShift = true → terminalShift := by
         | Fail_act => simp only [hf, ha, haw] at hb; exact absurd hb (by decide)
 
 /-- Boolean validator for `endReduce`. -/
-def isEndReduce : Bool :=
-  allbItems (fun s prod pos look =>
+def isEndReduce (A : Automaton G) : Bool :=
+  allbItems A (fun s prod pos look =>
     match futureOfProd prod pos with
     | [] =>
       match A.action_table s with
@@ -351,7 +353,7 @@ def isEndReduce : Bool :=
         | _ => false
     | _ => true)
 
-theorem isEndReduce_correct : isEndReduce = true → endReduce := by
+theorem isEndReduce_correct : isEndReduce A = true → endReduce A := by
   intro h
   refine allbItems_correct (Q := fun s prod fut look =>
     match fut with
@@ -379,8 +381,8 @@ theorem isEndReduce_correct : isEndReduce = true → endReduce := by
       | Fail_act => simp only [hf, ha, haw] at hb; exact absurd hb (by decide)
 
 /-- Boolean validator for `nonTerminalGoto`. -/
-def isNonTerminalGoto : Bool :=
-  allbItems (fun s prod pos look =>
+def isNonTerminalGoto (A : Automaton G) : Bool :=
+  allbItems A (fun s prod pos look =>
     match futureOfProd prod pos with
     | .NT nt :: _ =>
       match A.goto_table s nt with
@@ -388,7 +390,7 @@ def isNonTerminalGoto : Bool :=
       | none => false
     | _ => true)
 
-theorem isNonTerminalGoto_correct : isNonTerminalGoto = true → nonTerminalGoto := by
+theorem isNonTerminalGoto_correct : isNonTerminalGoto A = true → nonTerminalGoto A := by
   intro h
   refine allbItems_correct (Q := fun s prod fut look =>
     match fut with
@@ -412,25 +414,25 @@ theorem isNonTerminalGoto_correct : isNonTerminalGoto = true → nonTerminalGoto
         rwa [futureOfProd_succ hf] at hsf
 
 /-- Boolean validator for `nonTerminalClosed`. -/
-def isNonTerminalClosed : Bool :=
-  allbItems (fun s1 prod pos look =>
+def isNonTerminalClosed (A : Automaton G) : Bool :=
+  allbItems A (fun s1 prod pos look =>
     match futureOfProd prod pos with
     | .NT nt :: q =>
-      Allb A.Production (fun p =>
-        implb (compareEqb (A.prod_lhs p) nt)
-          (implb (nullableWord q) (decide (look ∈ findItemsMap s1 p 0)) &&
-            (firstWordSet q).all (fun look2 => decide (look2 ∈ findItemsMap s1 p 0))))
+      Allb G.Production (fun p =>
+        implb (compareEqb (G.prod_lhs p) nt)
+          (implb (nullableWord A q) (decide (look ∈ findItemsMap s1 p 0)) &&
+            (firstWordSet A q).all (fun look2 => decide (look2 ∈ findItemsMap s1 p 0))))
     | _ => true)
 
-theorem isNonTerminalClosed_correct : isNonTerminalClosed = true → nonTerminalClosed := by
+theorem isNonTerminalClosed_correct : isNonTerminalClosed A = true → nonTerminalClosed A := by
   intro h
   refine allbItems_correct (Q := fun s1 prod fut look =>
     match fut with
     | .NT nt :: q =>
-      ∀ p : A.Production, A.prod_lhs p = nt →
-        (if nullableWord q then stateHasFuture s1 p (futureOfProd p 0) look else True) ∧
-        (∀ look2 : A.Terminal,
-          look2 ∈ firstWordSet q → stateHasFuture s1 p (futureOfProd p 0) look2)
+      ∀ p : G.Production, G.prod_lhs p = nt →
+        (if nullableWord A q then stateHasFuture s1 p (futureOfProd p 0) look else True) ∧
+        (∀ look2 : G.Terminal,
+          look2 ∈ firstWordSet A q → stateHasFuture s1 p (futureOfProd p 0) look2)
     | _ => True) (fun s1 prod pos look hb => ?_) h
   cases hf : futureOfProd prod pos with
   | nil => trivial
@@ -449,7 +451,7 @@ theorem isNonTerminalClosed_correct : isNonTerminalClosed = true → nonTerminal
       obtain ⟨hnull, hfirst⟩ := hconj
       rw [implb_eq_true] at hnull
       refine ⟨?_, ?_⟩
-      · by_cases hc : nullableWord q = true
+      · by_cases hc : nullableWord A q = true
         · simp only [hc, if_true]
           exact stateHasFuture_of_mem (of_decide_eq_true (hnull hc))
         · simp only [Bool.not_eq_true] at hc; simp only [hc, Bool.false_eq_true, if_false]
@@ -460,13 +462,13 @@ theorem isNonTerminalClosed_correct : isNonTerminalClosed = true → nonTerminal
 /-! ### The complete validator -/
 
 /-- The boolean completeness validator (Coq `is_complete`). -/
-def isComplete (_ : Unit) : Bool :=
-  isNullableStable && isFirstStable && isStartFuture && isTerminalShift
-  && isEndReduce && isNonTerminalGoto && isStartGoto && isNonTerminalClosed
+def isComplete (A : Automaton G) : Bool :=
+  isNullableStable A && isFirstStable A && isStartFuture A && isTerminalShift A
+  && isEndReduce A && isNonTerminalGoto A && isStartGoto A && isNonTerminalClosed A
 
-/-- The validator is correct: if `isComplete () = true`, the automaton is
+/-- The validator is correct: if `isComplete A = true`, the automaton is
 `complete` (Coq `complete_is_validator`). -/
-theorem complete_is_validator : isComplete () = true → complete := by
+theorem complete_is_validator : isComplete A = true → complete A := by
   intro h
   simp only [isComplete, Bool.and_eq_true] at h
   obtain ⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩, h8⟩ := h

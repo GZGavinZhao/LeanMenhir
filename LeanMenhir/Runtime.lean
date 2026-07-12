@@ -6,7 +6,7 @@ grammar-specific glue (grammar, tables via `build_tables%`, `ntType`/`termType`/
 
 Nothing in this module is grammar-specific; it only:
   * computes a step budget from the token count,
-  * pads the finite token list into the infinite `Buffer` the interpreter wants,
+  * pads the finite token list into the infinite `Buffer G` the interpreter wants,
   * maps the `ParseResult` (`Parsed`/`Fail`/`Timeout`) into an `Except`.
 
 Tokens built by `Gen.automatonOfTablesTyped` have the shape `Info × Σ t, termType t`;
@@ -22,7 +22,7 @@ namespace LeanMenhir.Runtime
 open LeanMenhir
 open LeanMenhir.Buf
 
-variable {A : Automaton}
+variable {G : Grammar} {A : Automaton G}
 
 /-- A fuel **exponent** for an input of `n` tokens: budget `2 ^ fuelFor n =
 2⁶⁴ · 2^log₂(n+1) ≥ 2⁶³ · (n+1)` parser steps.
@@ -54,16 +54,16 @@ attribute [irreducible] fuelFor
 
 /-- The semantic-value type produced by parsing from initial state `init`: the
 value type of the start nonterminal. -/
-abbrev ResultType (A : Automaton) (init : A.InitState) : Type :=
-  A.symbol_semantic_type (.NT (A.start_nt init))
+abbrev ResultType {G : Grammar} (A : Automaton G) (init : A.InitState) : Type :=
+  G.symbol_semantic_type (.NT (A.start_nt init))
 
 /-- Run the verified parser on the finite token list `toks`, padding the buffer
 with the infinite `eof` filler, and project the `ParseResult` into `Except E`.
 `onFail`/`onTimeout` build the caller's error type from the failure cases. -/
 def parseList {E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator () = true)
-    (eof : A.Token) (toks : List A.Token)
-    (onFail : A.State → A.Token → E) (onTimeout : E) :
+    (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (eof : G.Token) (toks : List G.Token)
+    (onFail : A.State → G.Token → E) (onTimeout : E) :
     Except E (ResultType A init) :=
   match Main.parse init hsafe (fuelFor toks.length) (Buf.ofListEof toks eof) with
   | .Parsed v _ => .ok v
@@ -74,9 +74,9 @@ def parseList {E : Type}
 e.g. an unlexable token), then `parseList`. The external token type `Tok` is
 whatever the lexer produces (e.g. BNFC's `Token`). -/
 def parseWith {Tok E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator () = true)
-    (eof : A.Token) (adapt : Tok → Except E A.Token)
-    (onFail : A.State → A.Token → E) (onTimeout : E)
+    (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (eof : G.Token) (adapt : Tok → Except E G.Token)
+    (onFail : A.State → G.Token → E) (onTimeout : E)
     (input : List Tok) :
     Except E (ResultType A init) := do
   parseList init hsafe eof (← input.mapM adapt) onFail onTimeout
@@ -97,11 +97,11 @@ array-backed `Buf.ofListEof toks eof`; the two are connected by the interpreter
 extensionality bridge (`parse_congr`), since both denote the same token stream
 `toks ++ eof^ω`. -/
 theorem parseList_complete {E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator () = true)
-    (hcomplete : Main.completeValidator () = true)
-    (eof : A.Token) (toks : List A.Token)
-    (onFail : A.State → A.Token → E) (onTimeout : E) (k : Nat)
-    (tree : ParseTree (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
+    (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (hcomplete : Main.completeValidator A = true)
+    (eof : G.Token) (toks : List G.Token)
+    (onFail : A.State → G.Token → E) (onTimeout : E) (k : Nat)
+    (tree : ParseTree G (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
     (hfuel : ptSize tree ≤ 2 ^ fuelFor toks.length) :
     parseList init hsafe eof toks onFail onTimeout = .ok (ptSem tree) := by
   have hbuf : (Buf.ofListEof toks eof).get
@@ -121,11 +121,11 @@ realisability: any parse tree with at most `2⁶⁴` nodes — i.e. *any tree th
 can actually be constructed* — is found by the driver. What remains is exactly
 the mathematical content: the word `toks ++ eofᵏ` must be derivable. -/
 theorem parseList_complete_sized {E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator () = true)
-    (hcomplete : Main.completeValidator () = true)
-    (eof : A.Token) (toks : List A.Token)
-    (onFail : A.State → A.Token → E) (onTimeout : E) (k : Nat)
-    (tree : ParseTree (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
+    (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (hcomplete : Main.completeValidator A = true)
+    (eof : G.Token) (toks : List G.Token)
+    (onFail : A.State → G.Token → E) (onTimeout : E) (k : Nat)
+    (tree : ParseTree G (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
     (hsize : ptSize tree ≤ 2 ^ 64) :
     parseList init hsafe eof toks onFail onTimeout = .ok (ptSem tree) :=
   parseList_complete init hsafe hcomplete eof toks onFail onTimeout k tree
@@ -139,14 +139,14 @@ lexer never emits the EOF terminal, then `parseList` returning `.ok v` means the
 the anchoring hypothesis, success only certifies that *some prefix* of the
 padded stream was recognised (`Main.parse_correct`); this closes that gap. -/
 theorem parseList_sound_anchored {E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator () = true)
-    (eof : A.Token) (toks : List A.Token)
-    (onFail : A.State → A.Token → E) (onTimeout : E)
-    (hanch : EofAnchored (A.token_term eof) (A.start_nt init))
-    (hlex : ∀ tok ∈ toks, A.token_term tok ≠ A.token_term eof)
+    (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (eof : G.Token) (toks : List G.Token)
+    (onFail : A.State → G.Token → E) (onTimeout : E)
+    (hanch : EofAnchored (G.token_term eof) (A.start_nt init))
+    (hlex : ∀ tok ∈ toks, G.token_term tok ≠ G.token_term eof)
     {v : ResultType A init}
     (hok : parseList init hsafe eof toks onFail onTimeout = .ok v) :
-    ∃ pt : ParseTree (.NT (A.start_nt init)) (toks ++ [eof]), ptSem pt = v := by
+    ∃ pt : ParseTree G (.NT (A.start_nt init)) (toks ++ [eof]), ptSem pt = v := by
   unfold parseList at hok
   cases hp : Main.parse init hsafe (fuelFor toks.length) (Buf.ofListEof toks eof) with
   | Parsed v' rest =>

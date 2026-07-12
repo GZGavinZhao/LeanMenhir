@@ -83,6 +83,10 @@ def grammar : Grammar0 where
 
 def tables : GenTables := build_tables% grammar
 
+/-- Production lookups: the `build_tables%` jump trees, agreement with
+`grammar.prods` certified by **kernel `rfl`** (intrinsic faithfulness, D9). -/
+@[reducible] def calcLk : ProdLookup grammar := ProdLookup.ofTables grammar tables (by rfl)
+
 /-! ### 4. AST + heterogeneous semantic types + typed actions -/
 
 inductive Exp
@@ -94,12 +98,12 @@ deriving Repr, DecidableEq
 
 /-- Every `Exp`-level category carries the AST type `Exp`; the dummy nonterminal
 carries `Unit`. -/
-def ntType : Fin (tables.numNonterm + 1) → Type
+def ntType : Fin (grammar.numNonterm + 1) → Type
   | 4 => Unit
   | _ => Exp
 
 /-- `Integer`=6 carries an `Int`; all keywords/punctuation/EOF carry `Unit`. -/
-def termType : Fin (tables.numTerm + 1) → Type
+def termType : Fin (grammar.numTerm + 1) → Type
   | 6 => Int
   | _ => Unit
 
@@ -111,9 +115,9 @@ compiler only proves a `Fin n` numeric-literal match complete (ruling out
 `val ≥ n` via the `isLt` bound) for small `n`; past ~15 arms it reports the
 out-of-range index as a "missing case". `elimOutOfRange` discharges that
 impossible arm. BNFC's emitter appends this arm to every generated dispatcher. -/
-def actions : (p : Fin (tables.numProd + 1)) →
-    arrowsRight (symTypeOf tables ntType termType (.NT (prodLhsOf tables p)))
-                ((prodRhsRevOf tables p).map (symTypeOf tables ntType termType))
+def actions : (p : Fin (grammar.prods.size + 1)) →
+    arrowsRight (grammar.symType0 ntType termType (.NT (grammar.prodLhs0 calcLk p)))
+                ((grammar.prodRhsRev0 calcLk p).map (grammar.symType0 ntType termType))
   | 0 => fun (_ : Unit) (e : Exp) => e                            -- Start → Exp EOF
   | 1 => fun (r : Exp) (_ : Unit) (l : Exp) => Exp.add l r        -- EAdd
   | 2 => fun (r : Exp) (_ : Unit) (l : Exp) => Exp.sub l r        -- ESub
@@ -127,14 +131,20 @@ def actions : (p : Fin (tables.numProd + 1)) →
 
 /-! ### 5. Automaton, certificates, and the parse driver -/
 
-/-- The verified automaton; tokens carry a `Position` for error reporting. -/
-instance automaton : Automaton := automatonOfTablesTyped tables ntType termType Position actions
+/-- The verified grammar — a **definitional function of `grammar`** (D9). -/
+@[reducible] def calcGrammar : Grammar :=
+  grammar.toGrammarTyped calcLk ntType termType Position actions
+
+/-- The verified automaton for `calcGrammar`; `tables` contributes only the
+(untrusted) automaton half. -/
+def automaton : Automaton calcGrammar :=
+  automatonOfG0TablesTyped grammar calcLk ntType termType Position actions tables
 
 /-- Safety — kernel `rfl` (BTree-backed tables; no compiler-trust axiom). -/
-theorem calcSafe : Main.safeValidator (A := automaton) () = true := by rfl
+theorem calcSafe : Main.safeValidator automaton = true := by rfl
 
 /-- Completeness — kernel `rfl` (BTree-backed tables). -/
-theorem calcComplete : Main.completeValidator (A := automaton) () = true := by rfl
+theorem calcComplete : Main.completeValidator automaton = true := by rfl
 
 /-- The tables' **grammar half** is exactly `grammar` — the part the validators
 cannot check (they certify only the automaton half). This ties the verified
@@ -142,7 +152,7 @@ theorems, stated over the tables' grammar, to the `Grammar0` a human reviews. -/
 theorem calcGrammarMatch : tablesMatchGrammar tables grammar = true := by rfl
 
 /-- The automaton's token type: `Position × Σ t, termType t`. -/
-abbrev Tok : Type := automaton.Token
+abbrev Tok : Type := calcGrammar.Token
 
 /-- Map a lexer token to a grammar terminal (attaching its position), or fail. -/
 def adapt : LToken → Except String Tok

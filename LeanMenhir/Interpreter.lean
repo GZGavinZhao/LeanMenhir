@@ -17,26 +17,26 @@ import LeanMenhir.Buf
 
 namespace LeanMenhir
 
-variable [A : Automaton]
+variable {G : Grammar} {A : Automaton G}
 
 /-! ### Input buffers -/
 
 /-- The input is a finite token buffer with O(1) `head`/`tail`. -/
-abbrev Buffer : Type := LeanMenhir.Buf A.Token
+abbrev Buffer (G : Grammar) : Type := LeanMenhir.Buf G.Token
 
 /-! ### The automaton stack -/
 
 /-- The semantic-value type associated with a non-initial state: the value of its
 last symbol (Coq `noninitstate_type`). -/
 def noninitstateType (s : A.NonInitState) : Type :=
-  A.symbol_semantic_type (A.last_symb_of_non_init_state s)
+  G.symbol_semantic_type (A.last_symb_of_non_init_state s)
 
 /-- The automaton stack: non-initial states paired with a semantic value for
 their last symbol (Coq `stack`). -/
-def Stack : Type := List ((s : A.NonInitState) × noninitstateType s)
+def Stack (A : Automaton G) : Type := List ((s : A.NonInitState) × noninitstateType s)
 
 /-- The symbols recorded on a stack (Coq `symb_stack_of_stack`). -/
-def symbStackOfStack (stk : Stack) : List (Symbol A.Terminal A.Nonterminal) :=
+def symbStackOfStack (stk : Stack A) : List (Symbol G.Terminal G.Nonterminal) :=
   stk.map (fun cell => A.last_symb_of_non_init_state cell.1)
 
 /-! ### `pop` -/
@@ -45,38 +45,38 @@ def symbStackOfStack (stk : Stack) : List (Symbol A.Terminal A.Nonterminal) :=
 values into `action` and discarding the popped states (Coq `pop`). It requires a
 proof that the symbols form a prefix of the stack. -/
 def pop {R : Type} :
-    (symbolsToPop : List (Symbol A.Terminal A.Nonterminal)) → (stk : Stack) →
+    (symbolsToPop : List (Symbol G.Terminal G.Nonterminal)) → (stk : Stack A) →
     Prefix symbolsToPop (symbStackOfStack stk) →
-    arrowsRight R (symbolsToPop.map A.symbol_semantic_type) →
-    Stack × R
+    arrowsRight R (symbolsToPop.map G.symbol_semantic_type) →
+    Stack A × R
   | [], stk, _, action => (stk, action)
   | t :: q, ⟨stateCur, sem⟩ :: stackRec, hp, action =>
       let e : t = A.last_symb_of_non_init_state stateCur := (Prefix.inv_cons hp).1
       let hp' : Prefix q (symbStackOfStack stackRec) := (Prefix.inv_cons hp).2
-      let semConv : A.symbol_semantic_type t :=
-        cast (congrArg A.symbol_semantic_type e.symm) sem
+      let semConv : G.symbol_semantic_type t :=
+        cast (congrArg G.symbol_semantic_type e.symm) sem
       pop q stackRec hp' (action semConv)
   | _ :: _, [], hp, _ => nomatch hp
 
 /-- Declarative specification of `pop`, avoiding the dependent-type reasoning
 (Coq `pop_spec`). -/
-inductive PopSpec {R : Type} : (symbolsToPop : List (Symbol A.Terminal A.Nonterminal)) →
-    Stack → arrowsRight R (symbolsToPop.map A.symbol_semantic_type) → Stack → R → Prop
-  | nil (stk : Stack) (sem : R) : PopSpec [] stk sem stk sem
-  | cons {symbolsToPop : List (Symbol A.Terminal A.Nonterminal)} (st : A.NonInitState)
-      (stk : Stack)
+inductive PopSpec {R : Type} : (symbolsToPop : List (Symbol G.Terminal G.Nonterminal)) →
+    Stack A → arrowsRight R (symbolsToPop.map G.symbol_semantic_type) → Stack A → R → Prop
+  | nil (stk : Stack A) (sem : R) : PopSpec [] stk sem stk sem
+  | cons {symbolsToPop : List (Symbol G.Terminal G.Nonterminal)} (st : A.NonInitState)
+      (stk : Stack A)
       (action : arrowsRight R
-        ((A.last_symb_of_non_init_state st :: symbolsToPop).map A.symbol_semantic_type))
-      (sem : noninitstateType st) (stk' : Stack) (res : R) :
+        ((A.last_symb_of_non_init_state st :: symbolsToPop).map G.symbol_semantic_type))
+      (sem : noninitstateType st) (stk' : Stack A) (res : R) :
       PopSpec symbolsToPop stk (action sem) stk' res →
       PopSpec (A.last_symb_of_non_init_state st :: symbolsToPop) (⟨st, sem⟩ :: stk) action stk' res
 
 /-- The dependent `pop` agrees with its declarative spec (Coq `pop_spec_ok`,
 forward direction, which is what soundness needs). -/
 theorem pop_spec_ok {R : Type} :
-    ∀ (symbolsToPop : List (Symbol A.Terminal A.Nonterminal)) (stk : Stack)
+    ∀ (symbolsToPop : List (Symbol G.Terminal G.Nonterminal)) (stk : Stack A)
       (hp : Prefix symbolsToPop (symbStackOfStack stk))
-      (action : arrowsRight R (symbolsToPop.map A.symbol_semantic_type)) (stk' : Stack) (res : R),
+      (action : arrowsRight R (symbolsToPop.map G.symbol_semantic_type)) (stk' : Stack A) (res : R),
       pop symbolsToPop stk hp action = (stk', res) → PopSpec symbolsToPop stk action stk' res := by
   intro symbolsToPop
   induction symbolsToPop with
@@ -94,36 +94,36 @@ theorem pop_spec_ok {R : Type} :
       obtain ⟨e, hp'⟩ := Prefix.inv_cons hp
       subst e
       rw [pop] at heq
-      have hcast : cast (congrArg A.symbol_semantic_type (Prefix.inv_cons hp).1.symm) sem = sem :=
+      have hcast : cast (congrArg G.symbol_semantic_type (Prefix.inv_cons hp).1.symm) sem = sem :=
         eq_of_heq (cast_heq _ _)
       rw [hcast] at heq
       exact PopSpec.cons st stackRec action sem stk' res (ih stackRec _ _ stk' res heq)
 
-/-! ### Stack state helpers and the stack invariant -/
+/-! ### Stack A state helpers and the stack invariant -/
 
 variable (init : A.InitState)
 
 /-- The top state of a stack (Coq `state_of_stack`). -/
-def stateOfStack (stk : Stack) : A.State :=
+def stateOfStack (stk : Stack A) : A.State :=
   match stk with
   | [] => .Init init
   | ⟨s, _⟩ :: _ => .Ninit s
 
 /-- The stack of state-predicates of a stack (Coq `state_stack_of_stack`). -/
-def stateStackOfStack (stk : Stack) : List (A.State → Bool) :=
+def stateStackOfStack (stk : Stack A) : List (A.State → Bool) :=
   stk.map (fun cell => singletonStatePred (.Ninit cell.1)) ++ [singletonStatePred (.Init init)]
 
 /- The stack invariant: the recorded symbol/state assumptions hold all the way
 down the stack (Coq `stack_invariant` / `stack_invariant_next`). -/
 mutual
-inductive StackInvariant : Stack → Prop
-  | mk (stk : Stack) :
+inductive StackInvariant : Stack A → Prop
+  | mk (stk : Stack A) :
       Prefix (headSymbsOfState (stateOfStack init stk)) (symbStackOfStack stk) →
       PrefixPred (headStatesOfState (stateOfStack init stk)) (stateStackOfStack init stk) →
       StackInvariantNext stk → StackInvariant stk
-inductive StackInvariantNext : Stack → Prop
+inductive StackInvariantNext : Stack A → Prop
   | nil : StackInvariantNext []
-  | cons (stateCur : A.NonInitState) (st : noninitstateType stateCur) (stackRec : Stack) :
+  | cons (stateCur : A.NonInitState) (st : noninitstateType stateCur) (stackRec : Stack A) :
       StackInvariant stackRec → StackInvariantNext (⟨stateCur, st⟩ :: stackRec)
 end
 
@@ -140,7 +140,7 @@ theorem StackInvariant.next {stk} (Hi : StackInvariant init stk) : StackInvarian
 
 /-- The state-predicate stack always begins with the singleton predicate of the
 top state. -/
-theorem stateStackOfStack_cons_form (stk : Stack) :
+theorem stateStackOfStack_cons_form (stk : Stack A) :
     stateStackOfStack init stk =
       singletonStatePred (stateOfStack init stk) ::
         (match stk with | [] => [] | _ :: rec => stateStackOfStack init rec) := by
@@ -150,9 +150,9 @@ theorem stateStackOfStack_cons_form (stk : Stack) :
 
 /-- `pop` preserves the stack invariant (Coq `pop_preserves_invariant`). -/
 theorem pop_preserves_invariant {R : Type} :
-    ∀ (symbolsToPop : List (Symbol A.Terminal A.Nonterminal)) (stk : Stack)
+    ∀ (symbolsToPop : List (Symbol G.Terminal G.Nonterminal)) (stk : Stack A)
       (hp : Prefix symbolsToPop (symbStackOfStack stk))
-      (action : arrowsRight R (symbolsToPop.map A.symbol_semantic_type)),
+      (action : arrowsRight R (symbolsToPop.map G.symbol_semantic_type)),
       StackInvariant init stk → StackInvariant init (pop symbolsToPop stk hp action).1 := by
   intro symbolsToPop
   induction symbolsToPop with
@@ -170,9 +170,9 @@ theorem pop_preserves_invariant {R : Type} :
 /-- After popping, the resulting top state is valid for the popped symbols
 (Coq `pop_state_valid`). -/
 theorem pop_state_valid {R : Type} :
-    ∀ (symbolsToPop : List (Symbol A.Terminal A.Nonterminal)) (stk : Stack)
+    ∀ (symbolsToPop : List (Symbol G.Terminal G.Nonterminal)) (stk : Stack A)
       (hp : Prefix symbolsToPop (symbStackOfStack stk))
-      (action : arrowsRight R (symbolsToPop.map A.symbol_semantic_type))
+      (action : arrowsRight R (symbolsToPop.map G.symbol_semantic_type))
       (lpred : List (A.State → Bool)) (_hpp : PrefixPred lpred (stateStackOfStack init stk)),
       StateValidAfterPop (stateOfStack init (pop symbolsToPop stk hp action).1) symbolsToPop lpred := by
   intro symbolsToPop
@@ -206,27 +206,27 @@ theorem pop_state_valid {R : Type} :
 /-- The result of one step: failure, acceptance with the final semantic value, or
 progress with a new stack/buffer (Coq `step_result`). -/
 inductive StepResult where
-  | Fail : A.State → A.Token → StepResult
-  | Accept : A.symbol_semantic_type (.NT (A.start_nt init)) → Buffer → StepResult
-  | Progress : Stack → Buffer → StepResult
+  | Fail : A.State → G.Token → StepResult
+  | Accept : G.symbol_semantic_type (.NT (A.start_nt init)) → Buffer G → StepResult
+  | Progress : Stack A → Buffer G → StepResult
 
 /-! ### `reduceStep` -/
 
 /-- A reduce action: pop the RHS of `prod`, run its semantic action, then follow
 the goto for the produced nonterminal (Coq `reduce_step`). -/
-def reduceStep (stk : Stack) (prod : A.Production) (buffer : Buffer)
+def reduceStep (stk : Stack A) (prod : G.Production) (buffer : Buffer G)
     (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk) :
     StepResult init :=
-  let hpref : Prefix (A.prod_rhs_rev prod) (symbStackOfStack stk) :=
+  let hpref : Prefix (G.prod_rhs_rev prod) (symbStackOfStack stk) :=
     Prefix.trans Hval.1 (Hi.symb_prefix init)
-  match hpop : pop (A.prod_rhs_rev prod) stk hpref (A.prod_action prod) with
+  match hpop : pop (G.prod_rhs_rev prod) stk hpref (G.prod_action prod) with
   | (stk', sem) =>
-    match hg : A.goto_table (stateOfStack init stk') (A.prod_lhs prod) with
+    match hg : A.goto_table (stateOfStack init stk') (G.prod_lhs prod) with
     | some ⟨stateNew, e⟩ =>
-        .Progress (⟨stateNew, cast (congrArg A.symbol_semantic_type e) sem⟩ :: stk') buffer
+        .Progress (⟨stateNew, cast (congrArg G.symbol_semantic_type e) sem⟩ :: stk') buffer
     | none =>
-        let e2 : A.prod_lhs prod = A.start_nt init := by
-          have hsv := pop_state_valid init (A.prod_rhs_rev prod) stk hpref (A.prod_action prod)
+        let e2 : G.prod_lhs prod = A.start_nt init := by
+          have hsv := pop_state_valid init (G.prod_rhs_rev prod) stk hpref (G.prod_action prod)
             (headStatesOfState (stateOfStack init stk)) (Hi.state_prefix init)
           rw [hpop] at hsv
           have hgoto := Hval.2 (stateOfStack init stk') hsv
@@ -234,30 +234,30 @@ def reduceStep (stk : Stack) (prod : A.Production) (buffer : Buffer)
           cases stk' with
           | nil => exact hgoto
           | cons cell rec => exact hgoto.elim
-        .Accept (cast (congrArg (fun nt => A.symbol_semantic_type (Symbol.NT nt)) e2) sem) buffer
+        .Accept (cast (congrArg (fun nt => G.symbol_semantic_type (Symbol.NT nt)) e2) sem) buffer
 
 /-- `reduceStep` preserves the stack invariant on `Progress`
 (Coq `reduce_step_stack_invariant_preserved`). -/
-theorem reduceStep_stack_invariant_preserved (hsafe : safe) (stk : Stack) (prod : A.Production)
-    (buffer : Buffer) (Hval : validForReduce (stateOfStack init stk) prod)
-    (Hi : StackInvariant init stk) (stk' : Stack) (buffer' : Buffer) :
+theorem reduceStep_stack_invariant_preserved (hsafe : safe A) (stk : Stack A) (prod : G.Production)
+    (buffer : Buffer G) (Hval : validForReduce (stateOfStack init stk) prod)
+    (Hi : StackInvariant init stk) (stk' : Stack A) (buffer' : Buffer G) :
     reduceStep init stk prod buffer Hval Hi = .Progress stk' buffer' → StackInvariant init stk' := by
-  have Hi' := pop_preserves_invariant init (A.prod_rhs_rev prod) stk
-    (Prefix.trans Hval.1 (Hi.symb_prefix init)) (A.prod_action prod) Hi
-  have Hsv := pop_state_valid init (A.prod_rhs_rev prod) stk
-    (Prefix.trans Hval.1 (Hi.symb_prefix init)) (A.prod_action prod)
+  have Hi' := pop_preserves_invariant init (G.prod_rhs_rev prod) stk
+    (Prefix.trans Hval.1 (Hi.symb_prefix init)) (G.prod_action prod) Hi
+  have Hsv := pop_state_valid init (G.prod_rhs_rev prod) stk
+    (Prefix.trans Hval.1 (Hi.symb_prefix init)) (G.prod_action prod)
     (headStatesOfState (stateOfStack init stk)) (Hi.state_prefix init)
   intro heq
   simp only [reduceStep] at heq
   split at heq
   · -- shift to a new state via goto
     rename_i sn e hgoto
-    let stk0 := (pop (A.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
-      (A.prod_action prod)).1
+    let stk0 := (pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+      (G.prod_action prod)).1
     injection heq with hstk _
     subst hstk
-    have Hgoto1 := gotoHeadSymbs_of_safe hsafe (stateOfStack init stk0) (A.prod_lhs prod)
-    have Hgoto2 := gotoPastState_of_safe hsafe (stateOfStack init stk0) (A.prod_lhs prod)
+    have Hgoto1 := gotoHeadSymbs_of_safe hsafe (stateOfStack init stk0) (G.prod_lhs prod)
+    have Hgoto2 := gotoPastState_of_safe hsafe (stateOfStack init stk0) (G.prod_lhs prod)
     rw [hgoto] at Hgoto1 Hgoto2
     refine StackInvariant.mk _ ?_ ?_ (StackInvariantNext.cons sn _ stk0 Hi')
     · exact Prefix.cons _ (Prefix.trans Hgoto1 (Hi'.symb_prefix init))
@@ -270,7 +270,7 @@ theorem reduceStep_stack_invariant_preserved (hsafe : safe) (stk : Stack) (prod 
 /-! ### `step` -/
 
 /-- One parsing step (Coq `step`). -/
-def step (hsafe : safe) (stk : Stack) (buffer : Buffer) (Hi : StackInvariant init stk) :
+def step (hsafe : safe A) (stk : Stack A) (buffer : Buffer G) (Hi : StackInvariant init stk) :
     StepResult init :=
   match haction : A.action_table (stateOfStack init stk) with
   | .Default_reduce_act prod =>
@@ -280,24 +280,24 @@ def step (hsafe : safe) (stk : Stack) (buffer : Buffer) (Hi : StackInvariant ini
       reduceStep init stk prod buffer Hv Hi
   | .Lookahead_act awt =>
       let tok := buffer.head
-      match hawt : awt (A.token_term tok) with
+      match hawt : awt (G.token_term tok) with
       | .Shift_act stateNew e =>
           let semConv : noninitstateType stateNew :=
-            cast (congrArg A.symbol_semantic_type e) (A.token_sem tok)
+            cast (congrArg G.symbol_semantic_type e) (G.token_sem tok)
           .Progress (⟨stateNew, semConv⟩ :: stk) buffer.tail
       | .Reduce_act prod =>
           have Hv : validForReduce (stateOfStack init stk) prod := by
             have := (reduceOk_of_safe hsafe) (stateOfStack init stk)
             rw [haction] at this
-            have := this (A.token_term tok)
+            have := this (G.token_term tok)
             rw [hawt] at this; exact this
           reduceStep init stk prod buffer Hv Hi
       | .Fail_act => .Fail (stateOfStack init stk) tok
 
 /-- `step` preserves the stack invariant on `Progress`
 (Coq `step_stack_invariant_preserved`). -/
-theorem step_stack_invariant_preserved (hsafe : safe) (stk : Stack) (buffer : Buffer)
-    (Hi : StackInvariant init stk) (stk' : Stack) (buffer' : Buffer) :
+theorem step_stack_invariant_preserved (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
+    (Hi : StackInvariant init stk) (stk' : Stack A) (buffer' : Buffer G) :
     step init hsafe stk buffer Hi = .Progress stk' buffer' → StackInvariant init stk' := by
   intro heq
   simp only [step] at heq
@@ -314,8 +314,8 @@ theorem step_stack_invariant_preserved (hsafe : safe) (stk : Stack) (buffer : Bu
       have Hshift1 := shiftHeadSymbs_of_safe hsafe (stateOfStack init stk)
       have Hshift2 := shiftPastState_of_safe hsafe (stateOfStack init stk)
       rw [hact] at Hshift1 Hshift2
-      have H1 := Hshift1 (A.token_term buffer.head)
-      have H2 := Hshift2 (A.token_term buffer.head)
+      have H1 := Hshift1 (G.token_term buffer.head)
+      have H2 := Hshift2 (G.token_term buffer.head)
       rw [hawt] at H1 H2
       refine StackInvariant.mk _ ?_ ?_ (StackInvariantNext.cons sn _ stk Hi)
       · exact Prefix.cons _ (Prefix.trans H1 (Hi.symb_prefix init))
@@ -330,13 +330,13 @@ theorem step_stack_invariant_preserved (hsafe : safe) (stk : Stack) (buffer : Bu
 /-! ### The fuel-based parse loop -/
 
 /-- The final parse result (Coq `parse_result`). -/
-inductive ParseResult (R : Type) where
-  | Fail : A.State → A.Token → ParseResult R
-  | Timeout : ParseResult R
-  | Parsed : R → Buffer → ParseResult R
+inductive ParseResult (A : Automaton G) (R : Type) where
+  | Fail : A.State → G.Token → ParseResult A R
+  | Timeout : ParseResult A R
+  | Parsed : R → Buffer G → ParseResult A R
 
 /-- The parse loop, running `2 ^ logNSteps` steps (Coq `parse_fix`). -/
-def parseFix (hsafe : safe) (stk : Stack) (buffer : Buffer) (logNSteps : Nat)
+def parseFix (hsafe : safe A) (stk : Stack A) (buffer : Buffer G) (logNSteps : Nat)
     (Hi : StackInvariant init stk) :
     { sr : StepResult init // ∀ stk' buffer', sr = .Progress stk' buffer' → StackInvariant init stk' } :=
   match logNSteps with
@@ -348,7 +348,7 @@ def parseFix (hsafe : safe) (stk : Stack) (buffer : Buffer) (logNSteps : Nat)
       | ⟨sr, hsr⟩ => ⟨sr, hsr⟩
 
 /-- One unfolding of `parseFix` at a successor fuel (definitional). -/
-theorem parseFix_succ (hsafe : safe) (stk : Stack) (buffer : Buffer) (n : Nat)
+theorem parseFix_succ (hsafe : safe A) (stk : Stack A) (buffer : Buffer G) (n : Nat)
     (Hi : StackInvariant init stk) :
     parseFix init hsafe stk buffer (n + 1) Hi =
       match parseFix init hsafe stk buffer n Hi with
@@ -357,14 +357,14 @@ theorem parseFix_succ (hsafe : safe) (stk : Stack) (buffer : Buffer) (n : Nat)
       | ⟨sr, hsr⟩ => ⟨sr, hsr⟩ := rfl
 
 /-- The empty stack satisfies the stack invariant (Coq `parse_subproof`). -/
-theorem initStackInvariant : StackInvariant init ([] : Stack) := by
+theorem initStackInvariant : StackInvariant init ([] : Stack A) := by
   refine StackInvariant.mk [] ?_ ?_ StackInvariantNext.nil
   · exact Prefix.nil _
   · refine PrefixPred.cons _ _ (fun x => implb_self _) (PrefixPred.nil _)
 
 /-- Run the parser (Coq `parse`). -/
-def parse (hsafe : safe) (buffer : Buffer) (logNSteps : Nat) :
-    ParseResult (A.symbol_semantic_type (.NT (A.start_nt init))) :=
+def parse (hsafe : safe A) (buffer : Buffer G) (logNSteps : Nat) :
+    ParseResult A (G.symbol_semantic_type (.NT (A.start_nt init))) :=
   match (parseFix init hsafe [] buffer logNSteps (initStackInvariant init)).1 with
   | .Fail st tok => .Fail st tok
   | .Accept sem buffer' => .Parsed sem buffer'

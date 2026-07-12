@@ -36,22 +36,27 @@ def Language (α : Type) : Type := List α → Prop
 
 instance {α : Type} : Membership (List α) (Language α) := ⟨fun L w => L w⟩
 
-variable [G : Grammar]
+variable {G : Grammar}
 
-/-- `Derives nt word` : the token word `word` is derivable from nonterminal `nt`
-— i.e. **"`word` is in the language of `nt`"**. This is the propositional form
-of a `ParseTree`: the derivation itself is the (proof-relevant) witness. -/
-def Derives (nt : G.Nonterminal) (word : List G.Token) : Prop :=
-  Nonempty (ParseTree (.NT nt) word)
+/-- `G.Derives nt word` : the token word `word` is derivable from nonterminal
+`nt` **in grammar `G`** — i.e. "`word` is in the language of `nt`". This is the
+propositional form of a `ParseTree`: the derivation itself is the
+(proof-relevant) witness. -/
+def Grammar.Derives (G : Grammar) (nt : G.Nonterminal) (word : List G.Token) : Prop :=
+  Nonempty (ParseTree G (.NT nt) word)
 
 /-- A derivation witnesses membership. -/
-theorem Derives.intro {nt : G.Nonterminal} {word : List G.Token}
-    (pt : ParseTree (.NT nt) word) : Derives nt word := ⟨pt⟩
+theorem Grammar.Derives.intro {nt : G.Nonterminal} {word : List G.Token}
+    (pt : ParseTree G (.NT nt) word) : G.Derives nt word := ⟨pt⟩
 
-/-- The language of nonterminal `nt`: the set of token words derivable from it. -/
-def language (nt : G.Nonterminal) : Language G.Token := fun word => Derives nt word
+/-- The language of nonterminal `nt` in grammar `G`: the set of token words
+derivable from it. -/
+def Grammar.language (G : Grammar) (nt : G.Nonterminal) : Language G.Token :=
+  fun word => G.Derives nt word
 
-@[simp] theorem mem_language {nt : G.Nonterminal} {word : List G.Token} :
-    word ∈ language nt ↔ Derives nt word := Iff.rfl
+@[simp] theorem Grammar.mem_language {nt : G.Nonterminal} {word : List G.Token} :
+    word ∈ G.language nt ↔ G.Derives nt word := Iff.rfl
+
+export Grammar (mem_language)
 
 end LeanMenhir
