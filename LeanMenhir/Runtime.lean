@@ -24,12 +24,33 @@ open LeanMenhir.Buf
 
 variable {A : Automaton}
 
-/-- A fuel **exponent** generous enough for an input of `n` tokens. `Main.parse`
-runs with a budget of `2 ^ logNSteps` steps and a complete parse takes `O(n)`
-steps, so any `logNSteps ≥ log₂ n + c` suffices; we add slack. Too-small fuel
-only yields a `Timeout` error — never an unsound result — so over-provisioning is
-safe (the loop stops as soon as the parse accepts or fails). -/
-def fuelFor (n : Nat) : Nat := Nat.log2 (n + 1) + 6
+/-- A fuel **exponent** for an input of `n` tokens: budget `2 ^ fuelFor n =
+2⁶⁴ · 2^log₂(n+1) ≥ 2⁶³ · (n+1)` parser steps.
+
+Fuel is only a *bound*: `parseFix` short-circuits the moment the parse accepts
+or fails, so over-provisioning costs nothing on any terminating run (its
+recursion depth is `fuelFor n` — under 100 even for a million tokens). The
+`+ 64` makes the completeness precondition `ptSize tree ≤ 2 ^ fuelFor n`
+*effectively vacuous*: a parse tree needs one step per node, and no physically
+representable tree has more than `2⁶⁴` nodes (see `parseList_complete_sized` —
+the previous `+ 6` slack silently excluded grammars whose trees carry more than
+~32 nodes per token, e.g. deep precedence-coercion chains). The flip side: a
+`Timeout` can now effectively only be produced by a non-terminating table set
+(e.g. an ε-reduce/goto cycle), not by a valid-but-deep parse. Too-small fuel was
+never unsound — only a spurious `Timeout` — and neither is too-large fuel. -/
+def fuelFor (n : Nat) : Nat := Nat.log2 (n + 1) + 64
+
+/-- The fuel exponent is at least 64 (proved before `fuelFor` is sealed). -/
+theorem le_fuelFor (n : Nat) : 64 ≤ fuelFor n := by unfold fuelFor; omega
+
+/- `fuelFor` is sealed **irreducible**: the fuel argument of `parseFix` must stay
+opaque during *elaboration*. `parseFix (… + c)` is whnf-transparent — `Nat.add`
+reduces on a literal offset — and the elaborator's `whnf` re-reduces the nested
+match cascade exponentially in `c` (the old `+ 6` silently cost `2⁶` reductions
+whenever a theorem mentioning `parse … (fuelFor n) …` was instantiated; `+ 64`
+would hang). Sealing the definition keeps the fuel an atom; the compiler is
+unaffected, and proofs go through `le_fuelFor` instead of unfolding. -/
+attribute [irreducible] fuelFor
 
 /-- The semantic-value type produced by parsing from initial state `init`: the
 value type of the start nonterminal. -/
@@ -94,6 +115,21 @@ theorem parseList_complete {E : Type}
   | Parsed v rest => rw [hp] at H; rw [H.1]
   | Fail st tok => rw [hp] at H; exact H.elim
   | Timeout => rw [hp] at H; omega
+
+/-- `parseList_complete` with the fuel hypothesis discharged up to physical
+realisability: any parse tree with at most `2⁶⁴` nodes — i.e. *any tree that
+can actually be constructed* — is found by the driver. What remains is exactly
+the mathematical content: the word `toks ++ eofᵏ` must be derivable. -/
+theorem parseList_complete_sized {E : Type}
+    (init : A.InitState) (hsafe : Main.safeValidator () = true)
+    (hcomplete : Main.completeValidator () = true)
+    (eof : A.Token) (toks : List A.Token)
+    (onFail : A.State → A.Token → E) (onTimeout : E) (k : Nat)
+    (tree : ParseTree (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
+    (hsize : ptSize tree ≤ 2 ^ 64) :
+    parseList init hsafe eof toks onFail onTimeout = .ok (ptSem tree) :=
+  parseList_complete init hsafe hcomplete eof toks onFail onTimeout k tree
+    (Nat.le_trans hsize (Nat.pow_le_pow_right (by omega) (le_fuelFor toks.length)))
 
 /-- **Exact-consumption soundness of the runtime driver** for EOF-anchored
 grammars: if the grammar is EOF-anchored (decidable via `isEofAnchored`) and the
