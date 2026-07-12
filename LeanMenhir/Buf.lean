@@ -135,5 +135,68 @@ theorem appendList_get_congr {a b : Buf α} (h : a.get = b.get) :
 
 @[inherit_doc appendList] scoped infixl:65 " ++ₛ " => appendList
 
+/-! ### Denotation of concrete buffers
+
+The runtime driver feeds the parser an array-backed buffer (`ofListEof`), while
+the completeness theorem speaks about push-list buffers (`word ++ₛ bufferEnd`).
+These lemmas compute the denotation of both forms so the two can be compared:
+`ofListEof xs eofv` denotes exactly `xs ++ₛ const eofv`. -/
+
+/-- Denotation of an array-backed buffer with empty `push`: position `n` holds
+the array element at `idx + n`, falling back to `eof` past the end. -/
+theorem get_mk (a : Array α) (e : α) : ∀ (n i : Nat),
+    Buf.get ⟨[], a, i, e⟩ n = a.toList.getD (i + n) e
+  | 0, i => by
+    show (if h : i < a.size then a[i] else e) = a.toList.getD (i + 0) e
+    rw [Nat.add_zero, List.getD_eq_getElem?_getD]
+    split
+    · rename_i hlt
+      rw [List.getElem?_eq_getElem (by simpa using hlt)]
+      simp
+    · rename_i hge
+      rw [List.getElem?_eq_none (by simpa using Nat.le_of_not_lt hge)]
+      rfl
+  | n + 1, i => by
+    show Buf.get ⟨[], a, i + 1, e⟩ n = a.toList.getD (i + (n + 1)) e
+    rw [get_mk a e n (i + 1), Nat.add_assoc, Nat.add_comm 1 n]
+
+/-- Every position of the constant buffer holds `a`. -/
+theorem get_const (a : α) (n : Nat) : (const a).get n = a := by
+  show Buf.get ⟨[], #[], 0, a⟩ n = a
+  rw [get_mk]
+  rfl
+
+/-- Denotation of a push-list buffer over the constant buffer: position `n`
+holds the `n`-th list element, falling back to `a` past the end. -/
+theorem get_appendList_const (a : α) : ∀ (xs : List α) (n : Nat),
+    (xs ++ₛ const a).get n = xs.getD n a
+  | [], n => by rw [nil_append_stream, get_const]; exact (List.getD_nil).symm
+  | x :: xs, 0 => by rw [cons_append_stream]; exact (List.getD_cons_zero).symm
+  | x :: xs, n + 1 => by
+    rw [cons_append_stream, List.getD_cons_succ]
+    exact get_appendList_const a xs n
+
+/-- Padding the constant buffer with copies of its own element is invisible in
+the denotation. -/
+theorem get_replicate_const (k : Nat) (a : α) :
+    (List.replicate k a ++ₛ const a).get = (const a).get := by
+  funext n
+  rw [get_appendList_const, get_const, List.getD_eq_getElem?_getD]
+  rcases Nat.lt_or_ge n k with hlt | hge
+  · rw [List.getElem?_eq_getElem (by simpa using hlt), List.getElem_replicate]
+    rfl
+  · rw [List.getElem?_eq_none (by simpa using hge)]
+    rfl
+
+/-- The array-backed buffer `ofListEof xs eofv` denotes exactly the push-list
+buffer `xs ++ₛ const eofv`. This is the bridge that lets theorems stated on the
+canonical `++ₛ` form apply to the runtime's `ofListEof` input. -/
+theorem get_ofListEof (xs : List α) (e : α) :
+    (ofListEof xs e).get = (xs ++ₛ const e).get := by
+  funext n
+  show Buf.get ⟨[], xs.toArray, 0, e⟩ n = _
+  rw [get_mk, get_appendList_const]
+  simp
+
 end Buf
 end LeanMenhir

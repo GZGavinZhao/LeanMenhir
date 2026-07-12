@@ -20,6 +20,7 @@ import LeanMenhir.Main
 namespace LeanMenhir.Runtime
 
 open LeanMenhir
+open LeanMenhir.Buf
 
 variable {A : Automaton}
 
@@ -58,5 +59,40 @@ def parseWith {Tok E : Type}
     (input : List Tok) :
     Except E (ResultType A init) := do
   parseList init hsafe eof (← input.mapM adapt) onFail onTimeout
+
+/-- **Completeness of the runtime driver.** If `toks` followed by `k` copies of
+the EOF filler is a word of the grammar — witnessed by a parse `tree` — and the
+fuel heuristic covers the tree (`ptSize tree ≤ 2 ^ fuelFor toks.length`), then
+`parseList` returns exactly that tree's semantic value.
+
+For the usual EOF-anchored grammar (every start production ends in the EOF
+terminal) instantiate `k := 1`: the recognised word is `toks ++ [eof]`, i.e.
+the entire input is consumed and anchored at EOF. `k := 0` covers grammars that
+do not read an end marker.
+
+This is the end-to-end form of `Main.parse_complete`: the theorem there speaks
+about push-list buffers `word ++ₛ bufferEnd`, while `parseList` executes on the
+array-backed `Buf.ofListEof toks eof`; the two are connected by the interpreter
+extensionality bridge (`parse_congr`), since both denote the same token stream
+`toks ++ eof^ω`. -/
+theorem parseList_complete {E : Type}
+    (init : A.InitState) (hsafe : Main.safeValidator () = true)
+    (hcomplete : Main.completeValidator () = true)
+    (eof : A.Token) (toks : List A.Token)
+    (onFail : A.State → A.Token → E) (onTimeout : E) (k : Nat)
+    (tree : ParseTree (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
+    (hfuel : ptSize tree ≤ 2 ^ fuelFor toks.length) :
+    parseList init hsafe eof toks onFail onTimeout = .ok (ptSem tree) := by
+  have hbuf : (Buf.ofListEof toks eof).get
+      = ((toks ++ List.replicate k eof) ++ₛ Buf.const eof).get := by
+    rw [Buf.append_append_stream, Buf.get_ofListEof]
+    exact (Buf.appendList_get_congr (Buf.get_replicate_const k eof) toks).symm
+  have H := Main.parse_complete_ext init hsafe hcomplete (fuelFor toks.length)
+    (toks ++ List.replicate k eof) (Buf.const eof) (Buf.ofListEof toks eof) hbuf tree
+  unfold parseList
+  cases hp : Main.parse init hsafe (fuelFor toks.length) (Buf.ofListEof toks eof) with
+  | Parsed v rest => rw [hp] at H; rw [H.1]
+  | Fail st tok => rw [hp] at H; exact H.elim
+  | Timeout => rw [hp] at H; omega
 
 end LeanMenhir.Runtime

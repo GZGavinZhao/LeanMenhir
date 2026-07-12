@@ -209,4 +209,36 @@ theorem mini_unambiguous (word : List automaton.Token)
   Main.unambiguity (A := automaton) minicalcSafe minicalcComplete ((6 : Fin 10), .num 0)
     (0 : Fin 1) word tree1 tree2
 
+/-- The EOF token that `lexString` pads with. -/
+def eofTok : automaton.Token := ((6 : Fin 10), Expr.num 0)
+
+/-- **Runtime-path completeness**: completeness on the *exact buffer shape
+`parseExpr` executes* (`Buf.ofListEof toks EOF`, array-backed), not just on the
+push-list buffers `word ++ₛ bufferEnd` of `mini_parses`. If the lexed tokens
+followed by one EOF form a word of the grammar and the fuel covers the tree,
+the parser returns that tree's AST. The two buffer shapes are connected by the
+interpreter-extensionality bridge (`Main.parse_complete_ext` / `parse_congr`):
+both denote the token stream `toks ++ EOF^ω`.
+
+(`logNSteps` is universally quantified rather than fixed to `parseExpr`'s `50`:
+elaborating these fuel-indexed theorems at a *fuel literal* forces the
+elaborator's `whnf` through `parseFix`'s `2 ^ fuel` step cascade — exponential
+in the literal — so, as with `mini_parses`, the fuel stays symbolic.) -/
+theorem mini_parses_runtime (toks : List automaton.Token) (logNSteps : Nat)
+    (tree : ParseTree (.NT (automaton.start_nt (0 : Fin 1))) (toks ++ [eofTok]))
+    (hfuel : ptSize tree ≤ 2 ^ logNSteps) :
+    ∃ rest, Main.parse (A := automaton) (0 : Fin 1) minicalcSafe logNSteps
+        (Buf.ofListEof toks eofTok) = .Parsed (ptSem tree) rest := by
+  have hbuf : (Buf.ofListEof toks eofTok).get
+      = ((toks ++ [eofTok]) ++ₛ Buf.const eofTok).get := by
+    rw [Buf.append_append_stream, Buf.get_ofListEof]
+    exact (Buf.appendList_get_congr (Buf.get_replicate_const 1 eofTok) toks).symm
+  have H := Main.parse_complete_ext (A := automaton) (0 : Fin 1) minicalcSafe minicalcComplete
+    logNSteps _ (Buf.const eofTok) _ hbuf tree
+  cases hp : Main.parse (A := automaton) (0 : Fin 1) minicalcSafe logNSteps
+      (Buf.ofListEof toks eofTok) with
+  | Parsed sem rest => rw [hp] at H; exact ⟨rest, by rw [H.1]⟩
+  | Timeout => rw [hp] at H; omega
+  | Fail st tok => rw [hp] at H; exact H.elim
+
 end LeanMenhir.Examples.MiniCalc

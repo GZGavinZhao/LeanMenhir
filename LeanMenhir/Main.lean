@@ -10,6 +10,7 @@ completeness and unambiguity theorems.
 -/
 import LeanMenhir.Interpreter.Correct
 import LeanMenhir.Interpreter.Complete
+import LeanMenhir.Interpreter.Congr
 
 namespace LeanMenhir
 namespace Main
@@ -58,6 +59,48 @@ theorem parse_complete (init : A.InitState) (hsafe : safeValidator () = true)
     | .Fail _ _ => False :=
   LeanMenhir.parse_complete init word bufferEnd (safe_is_validator hsafe)
     (complete_is_validator hcomplete) tree logNSteps
+
+/-- **Completeness, extensionally** : `parse_complete` for *any* input buffer
+that denotes the same token stream as `word ++ₛ bufferEnd` — in particular the
+array-backed buffers built by `Buf.ofListEof` that the runtime driver executes
+(via `parse_congr`, since the parser observes the buffer only through
+`head`/`tail`). The residual buffer is pinned up to denotation. -/
+theorem parse_complete_ext (init : A.InitState) (hsafe : safeValidator () = true)
+    (hcomplete : completeValidator () = true) (logNSteps : Nat) (word : List A.Token)
+    (bufferEnd : Buffer) (buffer : Buffer) (hbuf : buffer.get = (word ++ₛ bufferEnd).get)
+    (tree : ParseTree (.NT (A.start_nt init)) word) :
+    match parse init hsafe logNSteps buffer with
+    | .Parsed sem buff =>
+        sem = ptSem tree ∧ buff.get = bufferEnd.get ∧ ptSize tree ≤ 2 ^ logNSteps
+    | .Timeout => 2 ^ logNSteps < ptSize tree
+    | .Fail _ _ => False := by
+  have Hc := parse_complete init hsafe hcomplete logNSteps word bufferEnd tree
+  have Hcg : ParseResult.BufEquiv (parse init hsafe logNSteps buffer)
+      (parse init hsafe logNSteps (word ++ₛ bufferEnd)) :=
+    parse_congr init (safe_is_validator hsafe) hbuf logNSteps
+  cases hp : parse init hsafe logNSteps buffer with
+  | Fail st tok =>
+    rw [hp] at Hcg
+    cases hq : parse init hsafe logNSteps (word ++ₛ bufferEnd) with
+    | Fail st' tok' => rw [hq] at Hc; exact Hc
+    | Timeout => rw [hq] at Hcg; exact Hcg.elim
+    | Parsed sem' buff' => rw [hq] at Hcg; exact Hcg.elim
+  | Timeout =>
+    rw [hp] at Hcg
+    cases hq : parse init hsafe logNSteps (word ++ₛ bufferEnd) with
+    | Timeout => rw [hq] at Hc; exact Hc
+    | Fail st' tok' => rw [hq] at Hcg; exact Hcg.elim
+    | Parsed sem' buff' => rw [hq] at Hcg; exact Hcg.elim
+  | Parsed sem buff =>
+    rw [hp] at Hcg
+    cases hq : parse init hsafe logNSteps (word ++ₛ bufferEnd) with
+    | Parsed sem' buff' =>
+      rw [hq] at Hc Hcg
+      obtain ⟨hsem, hbg⟩ := Hcg
+      obtain ⟨h1, h2, h3⟩ := Hc
+      exact ⟨hsem.trans h1, by rw [hbg, h2], h3⟩
+    | Fail st' tok' => rw [hq] at Hcg; exact Hcg.elim
+    | Timeout => rw [hq] at Hcg; exact Hcg.elim
 
 /-- **Unambiguity** (Coq `Main.unambiguity`): if both validators accept and the
 token type is inhabited, any two parse trees of the same word have the same
