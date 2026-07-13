@@ -80,6 +80,15 @@ class Enumerable (α : Type) where
 
 export Enumerable (allList allList_complete)
 
+/-- **Decidable bounded quantification** over an enumerable type: the enabling
+instance that lets universally-quantified `Prop`s over alphabets be discharged
+by `decide` directly (no bespoke boolean combinators needed at statement
+level). The decision procedure is a fold over `allList`. -/
+instance Enumerable.decForall {α : Type} [Enumerable α] (p : α → Prop)
+    [DecidablePred p] : Decidable (∀ x, p x) :=
+  decidable_of_iff (∀ x ∈ allList (α := α), p x)
+    ⟨fun h x => h x (allList_complete x), fun h x _ => h x⟩
+
 /-- An alphabet is a comparable type with Leibniz equality that is also finite.
 Mirrors Coq `Alphabet`. -/
 class Alphabet (α : Type) extends Comparable α, ComparableLeibnizEq α, Enumerable α
