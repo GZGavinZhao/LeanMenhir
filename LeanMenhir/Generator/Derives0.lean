@@ -133,13 +133,13 @@ private theorem ptl_snoc {G : Grammar} :
     ParseTreeList G ss w →
     {s : Symbol G.Terminal G.Nonterminal} → {wt : List G.Token} → ParseTree G s wt →
     Nonempty (ParseTreeList G (ss ++ [s]) (wt ++ w))
-  | _, _, .Nil_ptl, _, wt, t => by
+  | _, _, .nil, _, wt, t => by
     rw [List.append_nil]
-    exact ⟨.Cons_ptl .Nil_ptl t⟩
-  | _, _, .Cons_ptl q t', _, _, t => by
+    exact ⟨.cons .nil t⟩
+  | _, _, .cons q t', _, _, t => by
     obtain ⟨q'⟩ := ptl_snoc q t
     rw [← List.append_assoc]
-    exact ⟨.Cons_ptl q' t'⟩
+    exact ⟨.cons q' t'⟩
 
 /-- The common shape of `toGrammar`/`toGrammarTyped`: production fields are the
 `Grammar0`-definitional `prodLhs0`/`prodRhsRev0`; token and semantic fields are
@@ -178,8 +178,8 @@ private theorem pt_erase (g0 : Grammar0) (hwf : g0.WF) (lk : ProdLookup g0)
     {s : Symbol (Fin (g0.numTerm + 1)) (Fin (g0.numNonterm + 1))} → {w : List Tok} →
     ParseTree (bridgeG g0 lk SemT Tok tterm tsem pact) s w → GoodSym g0 s →
     g0.Derives (symErase s) (w.map fun tok => (tterm tok).val)
-  | _, _, .Terminal_pt tok, _ => .leaf _
-  | _, w, .Non_terminal_pt prod ptl, hgood => by
+  | _, _, .leaf tok, _ => .leaf _
+  | _, w, .node prod ptl, hgood => by
     have hgood' : (prodLhs0 g0 lk prod).val < g0.numNonterm := hgood
     by_cases hp : prod.val < g0.prods.size
     · have hgetD : g0.prods.getD prod.val (0, #[]) = g0.prods[prod.val] :=
@@ -229,8 +229,8 @@ private theorem ptl_erase (g0 : Grammar0) (hwf : g0.WF) (lk : ProdLookup g0)
     (∀ s ∈ ss, GoodSym g0 s) →
     ∃ ws, DerivesAll g0 ((ss.map symErase).reverse) ws ∧
       w.map (fun tok => (tterm tok).val) = ws.flatten
-  | _, _, .Nil_ptl, _ => ⟨[], .nil, rfl⟩
-  | _, _, @ParseTreeList.Cons_ptl _ _ _ q _ wt t, hss => by
+  | _, _, .nil, _ => ⟨[], .nil, rfl⟩
+  | _, _, @ParseTreeList.cons _ _ _ q _ wt t, hss => by
     obtain ⟨ws, hall, hw⟩ := ptl_erase g0 hwf lk SemT Tok tterm tsem pact q
       (fun s hs => hss s (List.mem_cons_of_mem _ hs))
     have ht := pt_erase g0 hwf lk SemT Tok tterm tsem pact t (hss _ List.mem_cons_self)
@@ -266,7 +266,7 @@ private theorem derives_to_pt (g0 : Grammar0) (hwf : g0.WF) (lk : ProdLookup g0)
       simp only [gsymToSymbolD]
       rw [show cl g0.numTerm (tterm tok).val = tterm tok from
         Fin.ext (cl_val_of_le (Nat.le_of_lt_succ (tterm tok).isLt))]
-      exact ⟨ParseTree.Terminal_pt (G := bridgeG g0 lk SemT Tok tterm tsem pact) tok⟩
+      exact ⟨ParseTree.leaf (G := bridgeG g0 lk SemT Tok tterm tsem pact) tok⟩
   | _, _, .node i hi ws hall => by
     intro word hword
     have hii : i < g0.prods.size + 1 := Nat.lt_succ_of_lt hi
@@ -290,7 +290,7 @@ private theorem derives_to_pt (g0 : Grammar0) (hwf : g0.WF) (lk : ProdLookup g0)
       rw [prodLhs0_val g0 lk ⟨i, hii⟩ hi hlt', hgetD, cl_val_of_le hlhs_le]
     simp only [gsymToSymbolD]
     rw [← hlhs]
-    exact ⟨ParseTree.Non_terminal_pt (G := bridgeG g0 lk SemT Tok tterm tsem pact) ⟨i, hii⟩ ptl'⟩
+    exact ⟨ParseTree.node (G := bridgeG g0 lk SemT Tok tterm tsem pact) ⟨i, hii⟩ ptl'⟩
 
 /-- List version of `derives_to_pt`: rebuild the `ParseTreeList` over the
 reversed RHS, splitting the token word along the derived chunks. -/
@@ -308,7 +308,7 @@ private theorem derivesAll_to_ptl (g0 : Grammar0) (hwf : g0.WF) (lk : ProdLookup
     intro word hword
     rw [List.flatten_nil] at hword
     obtain rfl : word = [] := List.map_eq_nil_iff.1 hword
-    exact ⟨.Nil_ptl⟩
+    exact ⟨.nil⟩
   | _, _, .cons hd tl => by
     intro word hword
     rw [List.flatten_cons] at hword

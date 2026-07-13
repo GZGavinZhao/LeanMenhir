@@ -39,12 +39,12 @@ theorem pop_spec_ptl {R : Type} (symbolsToPop : List (Symbol G.Terminal G.Nonter
       ptlSem ptl action = res := by
   induction hspec generalizing wordStk with
   | nil stk0 sem =>
-    exact ⟨wordStk, [], ParseTreeList.Nil_ptl, by simp, hword, by simp only [ptlSem]⟩
+    exact ⟨wordStk, [], ParseTreeList.nil, by simp, hword, by simp only [ptlSem]⟩
   | cons st stk0 action0 sem stk'0 res0 hspec' ih =>
     cases hword with
     | cons hwordq s pt =>
       obtain ⟨wordStk', wordRes, ptl, heq1, hword', heq2⟩ := ih _ hwordq
-      exact ⟨wordStk', wordRes ++ _, ParseTreeList.Cons_ptl ptl pt,
+      exact ⟨wordStk', wordRes ++ _, ParseTreeList.cons ptl pt,
         by rw [← List.append_assoc, heq1], hword', by rw [ptlSem]; exact heq2⟩
 
 /-- Transporting a parse tree along a symbol equality casts its semantic value. -/
@@ -87,7 +87,7 @@ theorem reduceStep_sound (stk : Stack A) (prod : G.Production)
     pop_spec_ok _ _ _ _ _ _ rfl
   obtain ⟨word1, word2, ptl, hwordeq, hword1, hptlsem⟩ := pop_spec_ptl _ _ word _ _ _ hps hword
   have hval2 : (pop (G.prod_rhs_rev prod) stk hpref (G.prod_action prod)).2
-      = ptSem (ParseTree.Non_terminal_pt prod ptl) := by rw [← hptlsem, ptSem]
+      = ptSem (ParseTree.node prod ptl) := by rw [← hptlsem, ptSem]
   simp only [reduceStep]
   split
   · -- outer Accept
@@ -101,7 +101,7 @@ theorem reduceStep_sound (stk : Stack A) (prod : G.Production)
       cases hword1
       rw [List.nil_append] at hwordeq
       subst hwordeq
-      refine ⟨(congrArg Symbol.NT e2) ▸ ParseTree.Non_terminal_pt prod ptl, hbuf, ?_⟩
+      refine ⟨(congrArg Symbol.NT e2) ▸ ParseTree.node prod ptl, hbuf, ?_⟩
       rw [ptSem_cast, ← hval2]
       exact hsem
   · -- outer Progress
@@ -112,8 +112,8 @@ theorem reduceStep_sound (stk : Stack A) (prod : G.Production)
       subst hstk
       refine ⟨hbuf, ?_⟩
       rw [← hwordeq]
-      have key := WordHasStackSemantics.cons hword1 sn (e ▸ ParseTree.Non_terminal_pt prod ptl)
-      rw [ptSem_cast e (ParseTree.Non_terminal_pt prod ptl), ← hval2] at key
+      have key := WordHasStackSemantics.cons hword1 sn (e ▸ ParseTree.node prod ptl)
+      rw [ptSem_cast e (ParseTree.node prod ptl), ← hval2] at key
       exact key
     · simp at heqv
   · -- outer Fail
@@ -180,8 +180,8 @@ theorem step_sound (hsafe : Safe A) (stk : Stack A) (word : List G.Token) (buffe
         refine ⟨word ++ [buffer.head], ?_, ?_⟩
         · rw [Buf.append_append_stream, Buf.cons_append_stream, Buf.nil_append_stream]
           exact Buf.appendList_get_congr (Buf.get_eta buffer).symm word
-        · have key := WordHasStackSemantics.cons hword sn (e ▸ ParseTree.Terminal_pt buffer.head)
-          rw [ptSem_cast e (ParseTree.Terminal_pt buffer.head), ptSem] at key
+        · have key := WordHasStackSemantics.cons hword sn (e ▸ ParseTree.leaf buffer.head)
+          rw [ptSem_cast e (ParseTree.leaf buffer.head), ptSem] at key
           exact key
       · rename_i prod hawt
         have Hv : validForReduce (stateOfStack init stk) prod := by

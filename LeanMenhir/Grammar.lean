@@ -134,16 +134,16 @@ mutual
 inductive ParseTree (G : Grammar) :
     Symbol G.Terminal G.Nonterminal → List G.Token → Type where
   /-- Parse tree for a terminal symbol. -/
-  | Terminal_pt : (tok : G.Token) → ParseTree G (.T (G.token_term tok)) [tok]
+  | leaf : (tok : G.Token) → ParseTree G (.T (G.token_term tok)) [tok]
   /-- Parse tree for a non-terminal symbol. -/
-  | Non_terminal_pt : (prod : G.Production) → {word : List G.Token} →
+  | node : (prod : G.Production) → {word : List G.Token} →
       ParseTreeList G (G.prod_rhs_rev prod) word →
       ParseTree G (.NT (G.prod_lhs prod)) word
 
 inductive ParseTreeList (G : Grammar) :
     List (Symbol G.Terminal G.Nonterminal) → List G.Token → Type where
-  | Nil_ptl : ParseTreeList G [] []
-  | Cons_ptl : {head_symbolsq : List (Symbol G.Terminal G.Nonterminal)} →
+  | nil : ParseTreeList G [] []
+  | cons : {head_symbolsq : List (Symbol G.Terminal G.Nonterminal)} →
       {wordq : List G.Token} → ParseTreeList G head_symbolsq wordq →
       {head_symbolt : Symbol G.Terminal G.Nonterminal} → {wordt : List G.Token} →
       ParseTree G head_symbolt wordt →
@@ -163,27 +163,27 @@ variable {G : Grammar}
 mutual
 def ptSem : {hs : Symbol G.Terminal G.Nonterminal} → {w : List G.Token} →
     ParseTree G hs w → G.symbol_semantic_type hs
-  | _, _, .Terminal_pt tok => G.token_sem tok
-  | _, _, .Non_terminal_pt prod ptl => ptlSem ptl (G.prod_action prod)
+  | _, _, .leaf tok => G.token_sem tok
+  | _, _, .node prod ptl => ptlSem ptl (G.prod_action prod)
 
 def ptlSem {A : Type} : {hs : List (Symbol G.Terminal G.Nonterminal)} →
     {w : List G.Token} → ParseTreeList G hs w →
     arrowsRight A (hs.map G.symbol_semantic_type) → A
-  | _, _, .Nil_ptl, act => act
-  | _, _, .Cons_ptl q t, act => ptlSem q (act (ptSem t))
+  | _, _, .nil, act => act
+  | _, _, .cons q t, act => ptlSem q (act (ptSem t))
 end
 
 /- The size of a parse tree (Coq `pt_size` / `ptl_size`). -/
 mutual
 def ptSize : {hs : Symbol G.Terminal G.Nonterminal} → {w : List G.Token} →
     ParseTree G hs w → Nat
-  | _, _, .Terminal_pt _ => 1
-  | _, _, .Non_terminal_pt _ l => ptlSize l + 1
+  | _, _, .leaf _ => 1
+  | _, _, .node _ l => ptlSize l + 1
 
 def ptlSize : {hs : List (Symbol G.Terminal G.Nonterminal)} → {w : List G.Token} →
     ParseTreeList G hs w → Nat
-  | _, _, .Nil_ptl => 0
-  | _, _, .Cons_ptl q t => ptSize t + ptlSize q
+  | _, _, .nil => 0
+  | _, _, .cons q t => ptSize t + ptlSize q
 end
 
 end LeanMenhir

@@ -91,12 +91,12 @@ theorem eof_free_pt {eoft : G.Terminal} {startnt : G.Nonterminal}
     {s : Symbol G.Terminal G.Nonterminal} → {w : List G.Token} →
     ParseTree G s w → s ≠ Symbol.T eoft → s ≠ Symbol.NT startnt →
     ∀ tok ∈ w, G.token_term tok ≠ eoft
-  | _, _, .Terminal_pt tok, hs, _ => by
+  | _, _, .leaf tok, hs, _ => by
     intro tok' hmem heq
     rw [List.mem_singleton] at hmem
     subst hmem
     exact hs (congrArg Symbol.T heq)
-  | _, _, .Non_terminal_pt prod ptl, _, hnt =>
+  | _, _, .node prod ptl, _, hnt =>
     have hlhs : G.prod_lhs prod ≠ startnt := fun he => hnt (congrArg Symbol.NT he)
     eof_free_ptl h ptl (fun s hs =>
       ⟨fun he => h.no_eof_elsewhere prod hlhs (he ▸ hs),
@@ -109,8 +109,8 @@ theorem eof_free_ptl {eoft : G.Terminal} {startnt : G.Nonterminal}
     ParseTreeList G ss w →
     (∀ s ∈ ss, s ≠ Symbol.T eoft ∧ s ≠ Symbol.NT startnt) →
     ∀ tok ∈ w, G.token_term tok ≠ eoft
-  | _, _, .Nil_ptl, _ => by intro tok hmem; exact absurd hmem List.not_mem_nil
-  | _, _, .Cons_ptl q t, hss => by
+  | _, _, .nil, _ => by intro tok hmem; exact absurd hmem List.not_mem_nil
+  | _, _, .cons q t, hss => by
     intro tok hmem
     rcases List.mem_append.1 hmem with hq | ht
     · exact eof_free_ptl h q (fun s hs => hss s (List.mem_cons_of_mem _ hs)) tok hq
@@ -125,13 +125,13 @@ theorem anchored_word_shape {eoft : G.Terminal} {startnt : G.Nonterminal}
     ∃ w' tk, w = w' ++ [tk] ∧ G.token_term tk = eoft ∧
       ∀ tok ∈ w', G.token_term tok ≠ eoft := by
   cases pt with
-  | Non_terminal_pt prod ptl =>
+  | node prod ptl =>
     obtain ⟨rest, hshape, hrest⟩ := h.start_shape prod rfl
     rw [hshape] at ptl
     cases ptl with
-    | Cons_ptl q t =>
+    | cons q t =>
       cases t with
-      | Terminal_pt tok =>
+      | leaf tok =>
         refine ⟨_, tok, rfl, rfl, ?_⟩
         refine eof_free_ptl h q (fun s hs => ?_)
         refine ⟨fun he => hrest (he ▸ hs), fun he => h.no_start_in_rhs prod ?_⟩
