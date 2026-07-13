@@ -46,17 +46,17 @@ values into `action` and discarding the popped states (Coq `pop`). It requires a
 proof that the symbols form a prefix of the stack. -/
 def pop {R : Type} :
     (symbolsToPop : List (Symbol G.Terminal G.Nonterminal)) → (stk : Stack A) →
-    Prefix symbolsToPop (symbStackOfStack stk) →
+    symbolsToPop <+: symbStackOfStack stk →
     arrowsRight R (symbolsToPop.map G.symbol_semantic_type) →
     Stack A × R
   | [], stk, _, action => (stk, action)
   | t :: q, ⟨stateCur, sem⟩ :: stackRec, hp, action =>
-      let e : t = A.last_symb_of_non_init_state stateCur := (Prefix.inv_cons hp).1
-      let hp' : Prefix q (symbStackOfStack stackRec) := (Prefix.inv_cons hp).2
+      let e : t = A.last_symb_of_non_init_state stateCur := (List.cons_prefix_cons.mp hp).1
+      let hp' : q <+: symbStackOfStack stackRec := (List.cons_prefix_cons.mp hp).2
       let semConv : G.symbol_semantic_type t :=
         cast (congrArg G.symbol_semantic_type e.symm) sem
       pop q stackRec hp' (action semConv)
-  | _ :: _, [], hp, _ => nomatch hp
+  | _ :: _, [], hp, _ => nomatch List.prefix_nil.mp hp
 
 /-- Declarative specification of `pop`, avoiding the dependent-type reasoning
 (Coq `pop_spec`). -/
@@ -75,7 +75,7 @@ inductive PopSpec {R : Type} : (symbolsToPop : List (Symbol G.Terminal G.Nonterm
 forward direction, which is what soundness needs). -/
 theorem pop_spec_ok {R : Type} :
     ∀ (symbolsToPop : List (Symbol G.Terminal G.Nonterminal)) (stk : Stack A)
-      (hp : Prefix symbolsToPop (symbStackOfStack stk))
+      (hp : symbolsToPop <+: symbStackOfStack stk)
       (action : arrowsRight R (symbolsToPop.map G.symbol_semantic_type)) (stk' : Stack A) (res : R),
       pop symbolsToPop stk hp action = (stk', res) → PopSpec symbolsToPop stk action stk' res := by
   intro symbolsToPop
@@ -88,13 +88,13 @@ theorem pop_spec_ok {R : Type} :
   | cons t q ih =>
     intro stk hp action stk' res heq
     cases stk with
-    | nil => exact (nomatch hp)
+    | nil => exact nomatch List.prefix_nil.mp hp
     | cons cell stackRec =>
       obtain ⟨st, sem⟩ := cell
-      obtain ⟨e, hp'⟩ := Prefix.inv_cons hp
+      obtain ⟨e, hp'⟩ := List.cons_prefix_cons.mp hp
       subst e
       rw [pop] at heq
-      have hcast : cast (congrArg G.symbol_semantic_type (Prefix.inv_cons hp).1.symm) sem = sem :=
+      have hcast : cast (congrArg G.symbol_semantic_type (List.cons_prefix_cons.mp hp).1.symm) sem = sem :=
         eq_of_heq (cast_heq _ _)
       rw [hcast] at heq
       exact PopSpec.cons st stackRec action sem stk' res (ih stackRec _ _ stk' res heq)
@@ -118,7 +118,7 @@ down the stack (Coq `stack_invariant` / `stack_invariant_next`). -/
 mutual
 inductive StackInvariant : Stack A → Prop
   | mk (stk : Stack A) :
-      Prefix (headSymbsOfState (stateOfStack init stk)) (symbStackOfStack stk) →
+      headSymbsOfState (stateOfStack init stk) <+: symbStackOfStack stk →
       PrefixPred (headStatesOfState (stateOfStack init stk)) (stateStackOfStack init stk) →
       StackInvariantNext stk → StackInvariant stk
 inductive StackInvariantNext : Stack A → Prop
@@ -128,7 +128,7 @@ inductive StackInvariantNext : Stack A → Prop
 end
 
 theorem StackInvariant.symb_prefix {stk} (Hi : StackInvariant init stk) :
-    Prefix (headSymbsOfState (stateOfStack init stk)) (symbStackOfStack stk) := by
+    headSymbsOfState (stateOfStack init stk) <+: symbStackOfStack stk := by
   cases Hi with | mk _ h _ _ => exact h
 
 theorem StackInvariant.state_prefix {stk} (Hi : StackInvariant init stk) :
@@ -151,7 +151,7 @@ theorem stateStackOfStack_cons_form (stk : Stack A) :
 /-- `pop` preserves the stack invariant (Coq `pop_preserves_invariant`). -/
 theorem pop_preserves_invariant {R : Type} :
     ∀ (symbolsToPop : List (Symbol G.Terminal G.Nonterminal)) (stk : Stack A)
-      (hp : Prefix symbolsToPop (symbStackOfStack stk))
+      (hp : symbolsToPop <+: symbStackOfStack stk)
       (action : arrowsRight R (symbolsToPop.map G.symbol_semantic_type)),
       StackInvariant init stk → StackInvariant init (pop symbolsToPop stk hp action).1 := by
   intro symbolsToPop
@@ -160,7 +160,7 @@ theorem pop_preserves_invariant {R : Type} :
   | cons t q ih =>
     intro stk hp action Hi
     cases stk with
-    | nil => exact (nomatch hp)
+    | nil => exact nomatch List.prefix_nil.mp hp
     | cons cell stackRec =>
       obtain ⟨st, sem⟩ := cell
       have hrec : StackInvariant init stackRec := by
@@ -171,7 +171,7 @@ theorem pop_preserves_invariant {R : Type} :
 (Coq `pop_state_valid`). -/
 theorem pop_state_valid {R : Type} :
     ∀ (symbolsToPop : List (Symbol G.Terminal G.Nonterminal)) (stk : Stack A)
-      (hp : Prefix symbolsToPop (symbStackOfStack stk))
+      (hp : symbolsToPop <+: symbStackOfStack stk)
       (action : arrowsRight R (symbolsToPop.map G.symbol_semantic_type))
       (lpred : List (A.State → Bool)) (_hpp : PrefixPred lpred (stateStackOfStack init stk)),
       StateValidAfterPop (stateOfStack init (pop symbolsToPop stk hp action).1) symbolsToPop lpred := by
@@ -185,13 +185,11 @@ theorem pop_state_valid {R : Type} :
     | cons pred lpred' =>
       apply StateValidAfterPop.nil1
       rw [stateStackOfStack_cons_form] at hpp
-      have himpl := (PrefixPred.inv_cons hpp).1 (stateOfStack init stk)
-      rw [singletonStatePred_self] at himpl
-      simpa [implb] using himpl
+      exact (PrefixPred.inv_cons hpp).1 _ (singletonStatePred_self _)
   | cons t q ih =>
     intro stk hp action lpred hpp
     cases stk with
-    | nil => exact (nomatch hp)
+    | nil => exact nomatch List.prefix_nil.mp hp
     | cons cell stackRec =>
       obtain ⟨st, sem⟩ := cell
       cases lpred with
@@ -217,8 +215,8 @@ the goto for the produced nonterminal (Coq `reduce_step`). -/
 def reduceStep (stk : Stack A) (prod : G.Production) (buffer : Buffer G)
     (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk) :
     StepResult init :=
-  let hpref : Prefix (G.prod_rhs_rev prod) (symbStackOfStack stk) :=
-    Prefix.trans Hval.1 (Hi.symb_prefix init)
+  let hpref : G.prod_rhs_rev prod <+: symbStackOfStack stk :=
+    Hval.1.trans (Hi.symb_prefix init)
   match hpop : pop (G.prod_rhs_rev prod) stk hpref (G.prod_action prod) with
   | (stk', sem) =>
     match hg : A.goto_table (stateOfStack init stk') (G.prod_lhs prod) with
@@ -243,16 +241,16 @@ theorem reduceStep_stack_invariant_preserved (hsafe : Safe A) (stk : Stack A) (p
     (Hi : StackInvariant init stk) (stk' : Stack A) (buffer' : Buffer G) :
     reduceStep init stk prod buffer Hval Hi = .Progress stk' buffer' → StackInvariant init stk' := by
   have Hi' := pop_preserves_invariant init (G.prod_rhs_rev prod) stk
-    (Prefix.trans Hval.1 (Hi.symb_prefix init)) (G.prod_action prod) Hi
+    (Hval.1.trans (Hi.symb_prefix init)) (G.prod_action prod) Hi
   have Hsv := pop_state_valid init (G.prod_rhs_rev prod) stk
-    (Prefix.trans Hval.1 (Hi.symb_prefix init)) (G.prod_action prod)
+    (Hval.1.trans (Hi.symb_prefix init)) (G.prod_action prod)
     (headStatesOfState (stateOfStack init stk)) (Hi.state_prefix init)
   intro heq
   simp only [reduceStep] at heq
   split at heq
   · -- shift to a new state via goto
     rename_i sn e hgoto
-    let stk0 := (pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+    let stk0 := (pop (G.prod_rhs_rev prod) stk (Hval.1.trans (Hi.symb_prefix init))
       (G.prod_action prod)).1
     injection heq with hstk _
     subst hstk
@@ -260,9 +258,9 @@ theorem reduceStep_stack_invariant_preserved (hsafe : Safe A) (stk : Stack A) (p
     have Hgoto2 := gotoPastState_of_safe hsafe (stateOfStack init stk0) (G.prod_lhs prod)
     rw [hgoto] at Hgoto1 Hgoto2
     refine StackInvariant.mk _ ?_ ?_ (StackInvariantNext.cons sn _ stk0 Hi')
-    · exact Prefix.cons _ (Prefix.trans Hgoto1 (Hi'.symb_prefix init))
+    · exact List.cons_prefix_cons.mpr ⟨rfl, Hgoto1.trans (Hi'.symb_prefix init)⟩
     · rw [stateStackOfStack_cons_form]
-      exact PrefixPred.cons _ _ (fun x => implb_self _)
+      exact PrefixPred.cons _ _ (fun _ h => h)
         (PrefixPred.trans Hgoto2 (Hi'.state_prefix init))
   · -- accept: cannot equal `Progress`
     simp at heq
@@ -318,9 +316,9 @@ theorem step_stack_invariant_preserved (hsafe : Safe A) (stk : Stack A) (buffer 
       have H2 := Hshift2 (G.token_term buffer.head)
       rw [hawt] at H1 H2
       refine StackInvariant.mk _ ?_ ?_ (StackInvariantNext.cons sn _ stk Hi)
-      · exact Prefix.cons _ (Prefix.trans H1 (Hi.symb_prefix init))
+      · exact List.cons_prefix_cons.mpr ⟨rfl, H1.trans (Hi.symb_prefix init)⟩
       · rw [stateStackOfStack_cons_form]
-        exact PrefixPred.cons _ _ (fun x => implb_self _)
+        exact PrefixPred.cons _ _ (fun _ h => h)
           (PrefixPred.trans H2 (Hi.state_prefix init))
     · -- Reduce_act
       exact reduceStep_stack_invariant_preserved init hsafe stk _ buffer _ Hi stk' buffer' heq
@@ -359,8 +357,8 @@ theorem parseFix_succ (hsafe : Safe A) (stk : Stack A) (buffer : Buffer G) (n : 
 /-- The empty stack satisfies the stack invariant (Coq `parse_subproof`). -/
 theorem initStackInvariant : StackInvariant init ([] : Stack A) := by
   refine StackInvariant.mk [] ?_ ?_ StackInvariantNext.nil
-  · exact Prefix.nil _
-  · refine PrefixPred.cons _ _ (fun x => implb_self _) (PrefixPred.nil _)
+  · exact List.nil_prefix
+  · refine PrefixPred.cons _ _ (fun _ h => h) (PrefixPred.nil _)
 
 /-- Run the parser (Coq `parse`). -/
 def parse (hsafe : Safe A) (buffer : Buffer G) (logNSteps : Nat) :

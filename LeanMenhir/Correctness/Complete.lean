@@ -254,12 +254,13 @@ theorem allbItems_correct
 
 /-- Boolean validator for `nullableStable`. -/
 def isNullableStable (A : Automaton G) : Bool :=
-  Allb G.Production (fun p => implb (nullableWord A (G.prod_rhs_rev p)) (A.nullable_nterm (G.prod_lhs p)))
+  Allb G.Production
+    (fun p => !nullableWord A (G.prod_rhs_rev p) || A.nullable_nterm (G.prod_lhs p))
 
 theorem isNullableStable_correct : isNullableStable A = true → nullableStable A := by
   intro h
   refine forall_of_Allb (P := fun p => _) (fun p hp => ?_) h
-  rw [implb_eq_true] at hp
+  rw [not_or_iff_imp] at hp
   by_cases hc : nullableWord A (G.prod_rhs_rev p) = true
   · simp only [hc, if_true]; exact hp hc
   · simp only [Bool.not_eq_true] at hc; simp only [hc, Bool.false_eq_true, if_false]
@@ -296,18 +297,18 @@ theorem isStartGoto_correct : isStartGoto A = true → startGoto A := by
 def isStartFuture (A : Automaton G) : Bool :=
   Allb A.InitState (fun init =>
     Allb G.Production (fun p =>
-      implb (decide (G.prod_lhs p = A.start_nt init))
-        (Allb G.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0)))))
+      !decide (G.prod_lhs p = A.start_nt init) ||
+        Allb G.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0))))
 
 theorem isStartFuture_correct : isStartFuture A = true → startFuture A := by
   intro h
   refine forall_of_Allb (P := fun init => _) (fun init hi => ?_) h
   intro p hlhs t
   have hp := forall_of_Allb
-    (P := fun p => implb (decide (G.prod_lhs p = A.start_nt init))
-      (Allb G.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0))) = true)
+    (P := fun p => (!decide (G.prod_lhs p = A.start_nt init) ||
+      Allb G.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0))) = true)
     (fun p hp => hp) hi p
-  rw [implb_eq_true] at hp
+  rw [not_or_iff_imp] at hp
   have hcmp : decide (G.prod_lhs p = A.start_nt init) = true := decide_eq_true hlhs
   have hall := hp hcmp
   have ht := forall_of_Allb
@@ -436,8 +437,8 @@ def isNonTerminalClosed (A : Automaton G) : Bool :=
     match futureOfProd prod pos with
     | .NT nt :: q =>
       Allb G.Production (fun p =>
-        implb (decide (G.prod_lhs p = nt))
-          (implb (nullableWord A q) (decide (look ∈ findItemsMap s1 p 0)) &&
+        !decide (G.prod_lhs p = nt) ||
+          ((!nullableWord A q || decide (look ∈ findItemsMap s1 p 0)) &&
             (firstWordSet A q).all (fun look2 => decide (look2 ∈ findItemsMap s1 p 0))))
     | _ => true)
 
@@ -462,11 +463,11 @@ theorem isNonTerminalClosed_correct : isNonTerminalClosed A = true → nonTermin
       unfold Allb at hb
       rw [List.all_eq_true] at hb
       have hgp := hb p (allList_complete p)
-      rw [implb_eq_true] at hgp
+      rw [not_or_iff_imp] at hgp
       have hconj := hgp (decide_eq_true hlhs)
       rw [Bool.and_eq_true] at hconj
       obtain ⟨hnull, hfirst⟩ := hconj
-      rw [implb_eq_true] at hnull
+      rw [not_or_iff_imp] at hnull
       refine ⟨?_, ?_⟩
       · by_cases hc : nullableWord A q = true
         · simp only [hc, if_true]

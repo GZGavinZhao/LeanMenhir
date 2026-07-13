@@ -10,7 +10,7 @@ load-bearing for this table.
 
 | Coq | Lean | Notes |
 |---|---|---|
-| `Alphabet.v` | `LeanMenhir/Spec/Alphabet.lean` | `comparison` ↦ `Ordering`; `Finite.all_list` ↦ `Enumerable.allList` (computable) |
+| `Alphabet.v` | `LeanMenhir/Spec/Alphabet.lean` | `comparison` ↦ `Ordering`; `Comparable`/`ComparableLeibnizEq` ↦ core `Ord` + `Std.TransOrd`/`Std.LawfulEqOrd`; `compare_eqb` ↦ `decide (a = b)`; `Finite.all_list` ↦ `Enumerable.allList` (computable) |
 | `Grammar.v` | `LeanMenhir/Spec/Grammar.lean` | `Grammar.T` module type ↦ `structure Grammar`; `parse_tree`/`parse_tree_list` ↦ `ParseTree G`/`ParseTreeList G` with constructors `leaf`/`node`/`nil`/`cons` (ex `Terminal_pt`/`Non_terminal_pt`/`Nil_ptl`/`Cons_ptl`) |
 | — | `LeanMenhir/Spec/Language.lean` | no Coq counterpart: named language membership (`Grammar.Derives`, `G.language`) |
 | `Automaton.v` | `LeanMenhir/Machine/Automaton.lean` | `Automaton.T` (extends grammar via functor) ↦ `structure Automaton (G : Grammar)` (explicit grammar parameter); adds `goto_enum`(+`_complete`) for sparse validator iteration |

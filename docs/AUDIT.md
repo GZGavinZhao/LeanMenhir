@@ -87,12 +87,11 @@ not part of the proof.
 - **`Timeout`** with the runtime fuel can effectively only be produced by a
   non-terminating table set, not by a valid-but-deep parse.
 - Validator hypotheses are the `Prop` structures `Safe A` / `Complete A`
-  (named, documented fields), discharged per automaton by
-  `Safe.of_check (by decide)` / `(by rfl)` / `(by native_decide)`.
-  Genuine `Decidable (Safe A)` instances (direct `by decide` on the Props)
-  are a planned follow-up (refactor phase P5), as are the migration to core
-  `Ord`/`Std.TransCmp`/`List.IsPrefix` (P4) and the `Spec/Machine/Correctness`
-  directory reorganisation (P7b).
+  (named, documented fields). `Safe A` is genuinely decidable (a plain
+  `by decide` runs the tuned boolean validator); `Complete A` is discharged by
+  `Complete.of_check (by decide)` / `(by rfl)` / `(by native_decide)` — its
+  checker is sound but deliberately stricter than the Prop (see the module
+  docstring in `Correctness/Safe.lean`'s reflection section).
 - For Coq cross-checking, see `docs/COQ-MAP.md`.
 
 ## Checking axiom hygiene yourself

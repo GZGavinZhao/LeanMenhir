@@ -65,7 +65,7 @@ theorem reduceStep_congr (stk : Stack A) (prod : G.Production) {b₁ b₂ : Buff
     (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (reduceStep init stk prod b₁ Hval Hi)
       (reduceStep init stk prod b₂ Hval Hi) := by
-  rcases hpop : pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+  rcases hpop : pop (G.prod_rhs_rev prod) stk (Hval.1.trans (Hi.symb_prefix init))
       (G.prod_action prod) with ⟨stk0, sem⟩
   cases hgoto : A.goto_table (stateOfStack init stk0) (G.prod_lhs prod) with
   | some v =>
@@ -75,12 +75,12 @@ theorem reduceStep_congr (stk : Stack A) (prod : G.Production) {b₁ b₂ : Buff
     exact ⟨rfl, h⟩
   | none =>
     have hgoto' : A.goto_table (stateOfStack init
-        (pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+        (pop (G.prod_rhs_rev prod) stk (Hval.1.trans (Hi.symb_prefix init))
           (G.prod_action prod)).1) (G.prod_lhs prod) = none := by
       rw [hpop]; exact hgoto
     have e2 : G.prod_lhs prod = A.start_nt init :=
       (reduce_none_aux init stk prod Hval Hi
-        (Prefix.trans Hval.1 (Hi.symb_prefix init)) hgoto').2
+        (Hval.1.trans (Hi.symb_prefix init)) hgoto').2
     rw [reduceStep_accept_eq init stk prod b₁ Hval Hi stk0 sem e2 hpop hgoto,
         reduceStep_accept_eq init stk prod b₂ Hval Hi stk0 sem e2 hpop hgoto]
     exact ⟨rfl, h⟩

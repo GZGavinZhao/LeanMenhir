@@ -57,7 +57,7 @@ theorem ptSem_cast {s1 s2 : Symbol G.Terminal G.Nonterminal} {w : List G.Token}
 nonterminal is the start symbol (the core of `reduceStep`'s accept case). -/
 theorem reduce_none_aux (stk : Stack A) (prod : G.Production)
     (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk)
-    (hpref : Prefix (G.prod_rhs_rev prod) (symbStackOfStack stk))
+    (hpref : G.prod_rhs_rev prod <+: symbStackOfStack stk)
     (hgoto : A.goto_table (stateOfStack init
       (pop (G.prod_rhs_rev prod) stk hpref (G.prod_action prod)).1) (G.prod_lhs prod) = none) :
     (pop (G.prod_rhs_rev prod) stk hpref (G.prod_action prod)).1 = [] ∧
@@ -79,8 +79,8 @@ theorem reduceStep_sound (stk : Stack A) (prod : G.Production)
         ∃ pt : ParseTree G (.NT (A.start_nt init)) word, buffer = bufferNew ∧ ptSem pt = sem
     | .Progress stk' bufferNew => buffer = bufferNew ∧ WordHasStackSemantics word stk'
     | .Fail _ _ => True := by
-  have hpref : Prefix (G.prod_rhs_rev prod) (symbStackOfStack stk) :=
-    Prefix.trans Hval.1 (Hi.symb_prefix init)
+  have hpref : G.prod_rhs_rev prod <+: symbStackOfStack stk :=
+    Hval.1.trans (Hi.symb_prefix init)
   have hps : PopSpec (G.prod_rhs_rev prod) stk (G.prod_action prod)
       (pop (G.prod_rhs_rev prod) stk hpref (G.prod_action prod)).1
       (pop (G.prod_rhs_rev prod) stk hpref (G.prod_action prod)).2 :=

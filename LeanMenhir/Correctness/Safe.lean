@@ -14,58 +14,18 @@ import LeanMenhir.Correctness.Classes
 
 namespace LeanMenhir
 
-/-! ### Prefix of symbol lists (generic) -/
+/- Prefixes of symbol lists: Coq's bespoke `prefix` inductive and `is_prefix`
+boolean are rendered by core's `List.IsPrefix` (`l₁ <+: l₂`) and
+`List.isPrefixOf` (round-trip: `List.isPrefixOf_iff_prefix`).
 
-/-- `Prefix l₁ l₂` : `l₁` is a prefix of `l₂` (Coq `prefix`). -/
-inductive Prefix {σ : Type} : List σ → List σ → Prop
-  | nil (l : List σ) : Prefix [] l
-  | cons {l1 l2 : List σ} (x : σ) : Prefix l1 l2 → Prefix (x :: l1) (x :: l2)
-
-theorem Prefix.inv_cons {σ : Type} {x y : σ} {l1 l2 : List σ}
-    (h : Prefix (x :: l1) (y :: l2)) : x = y ∧ Prefix l1 l2 := by
-  cases h with
-  | cons _ h' => exact ⟨rfl, h'⟩
-
-theorem Prefix.trans {σ : Type} {l1 l2 l3 : List σ}
-    (h1 : Prefix l1 l2) (h2 : Prefix l2 l3) : Prefix l1 l3 := by
-  induction h1 generalizing l3 with
-  | nil => exact Prefix.nil l3
-  | cons x _ ih => cases h2 with
-    | cons _ h2' => exact Prefix.cons x (ih h2')
-
-/-- Boolean prefix test (Coq `is_prefix`). -/
-def isPrefix {σ : Type} [DecidableEq σ] : List σ → List σ → Bool
-  | [], _ => true
-  | t1 :: q1, t2 :: q2 => decide (t1 = t2) && isPrefix q1 q2
-  | _ :: _, [] => false
-
-theorem isPrefix_correct {σ : Type} [DecidableEq σ] :
-    ∀ l1 l2 : List σ, isPrefix l1 l2 = true → Prefix l1 l2
-  | [], l2, _ => Prefix.nil l2
-  | _ :: _, [], h => by simp [isPrefix] at h
-  | t1 :: q1, t2 :: q2, h => by
-    simp only [isPrefix, Bool.and_eq_true] at h
-    obtain ⟨h1, h2⟩ := h
-    rw [decide_eq_true_eq] at h1
-    subst h1
-    exact Prefix.cons t1 (isPrefix_correct q1 q2 h2)
-
-/-! ### Prefix of predicate lists (generic) -/
-
-/-- Boolean implication. -/
-def implb (a b : Bool) : Bool := !a || b
-
-theorem implb_eq_true {a b : Bool} : implb a b = true ↔ (a = true → b = true) := by
-  cases a <;> cases b <;> simp [implb]
-
-theorem implb_self (a : Bool) : implb a a = true := by cases a <;> rfl
+### Prefix of predicate lists (generic) -/
 
 /-- A "prefix" relation on predicate lists: each predicate of `l₂` entails the
 corresponding predicate of `l₁` (Coq `prefix_pred`). -/
 inductive PrefixPred {st : Type} : List (st → Bool) → List (st → Bool) → Prop
   | nil (l : List (st → Bool)) : PrefixPred [] l
   | cons {l1 l2 : List (st → Bool)} (f1 f2 : st → Bool) :
-      (∀ x, implb (f2 x) (f1 x) = true) → PrefixPred l1 l2 →
+      (∀ x, f2 x = true → f1 x = true) → PrefixPred l1 l2 →
       PrefixPred (f1 :: l1) (f2 :: l2)
 
 theorem PrefixPred.trans {st : Type} {l1 l2 l3 : List (st → Bool)}
@@ -74,13 +34,11 @@ theorem PrefixPred.trans {st : Type} {l1 l2 l3 : List (st → Bool)}
   | nil => exact PrefixPred.nil l3
   | cons f1 f2 hf2f1 _ ih => cases h2 with
     | cons _ f3 hf3f2 h2' =>
-      refine PrefixPred.cons f1 f3 (fun x => ?_) (ih h2')
-      have a := hf2f1 x; have b := hf3f2 x
-      revert a b; cases f1 x <;> cases f2 x <;> cases f3 x <;> simp [implb]
+      exact PrefixPred.cons f1 f3 (fun x h => hf2f1 x (hf3f2 x h)) (ih h2')
 
 theorem PrefixPred.inv_cons {st : Type} {f1 f2 : st → Bool} {l1 l2 : List (st → Bool)}
     (h : PrefixPred (f1 :: l1) (f2 :: l2)) :
-    (∀ x, implb (f2 x) (f1 x) = true) ∧ PrefixPred l1 l2 := by
+    (∀ x, f2 x = true → f1 x = true) ∧ PrefixPred l1 l2 := by
   cases h with
   | cons _ _ himpl h' => exact ⟨himpl, h'⟩
 
@@ -114,7 +72,7 @@ def headStatesOfState (s : A.State) : List (A.State → Bool) :=
 def isPrefixPred : List (A.State → Bool) → List (A.State → Bool) → Bool
   | [], _ => true
   | f1 :: q1, f2 :: q2 =>
-      Allb A.State (fun x => implb (f2 x) (f1 x)) && isPrefixPred q1 q2
+      Allb A.State (fun x => !f2 x || f1 x) && isPrefixPred q1 q2
   | _ :: _, [] => false
 
 theorem isPrefixPred_correct :
@@ -124,8 +82,8 @@ theorem isPrefixPred_correct :
   | f1 :: q1, f2 :: q2, h => by
     simp only [isPrefixPred, Bool.and_eq_true] at h
     obtain ⟨h1, h2⟩ := h
-    refine PrefixPred.cons f1 f2 (fun x => ?_) (isPrefixPred_correct q1 q2 h2)
-    exact forall_of_Allb (fun x hx => hx) h1 x
+    refine PrefixPred.cons f1 f2 (fun x hx => ?_) (isPrefixPred_correct q1 q2 h2)
+    exact not_or_iff_imp.mp (forall_of_Allb (fun x hx => hx) h1 x) hx
 
 /-! ### State valid after pop -/
 
@@ -161,14 +119,14 @@ def shiftHeadSymbs (A : Automaton G) : Prop :=
   ∀ s, match A.action_table s with
     | .Lookahead_act awp => ∀ t, match awp t with
         | .Shift_act s2 _ =>
-            Prefix (A.past_symb_of_non_init_state s2) (headSymbsOfState s)
+            A.past_symb_of_non_init_state s2 <+: headSymbsOfState s
         | _ => True
     | _ => True
 
 /-- Same, for gotos (Coq `goto_head_symbs`). -/
 def gotoHeadSymbs (A : Automaton G) : Prop :=
   ∀ s nt, match A.goto_table s nt with
-    | some ⟨s2, _⟩ => Prefix (A.past_symb_of_non_init_state s2) (headSymbsOfState s)
+    | some ⟨s2, _⟩ => A.past_symb_of_non_init_state s2 <+: headSymbsOfState s
     | none => True
 
 /-- The state-stack assumptions are preserved by shift (Coq `shift_past_state`). -/
@@ -188,7 +146,7 @@ def gotoPastState (A : Automaton G) : Prop :=
 
 /-- A state is valid for reducing a production (Coq `valid_for_reduce`). -/
 def validForReduce (s : A.State) (prod : G.Production) : Prop :=
-  Prefix (G.prod_rhs_rev prod) (headSymbsOfState s) ∧
+  G.prod_rhs_rev prod <+: headSymbsOfState s ∧
   ∀ stateNew, StateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) →
     match A.goto_table stateNew (G.prod_lhs prod) with
     | none => match stateNew with
@@ -230,7 +188,7 @@ theorem reduceOk_of_safe (h : Safe A) : reduceOk A := h.reduceOk
 
 /-- Boolean test for `validForReduce`. -/
 def isValidForReduce (s : A.State) (prod : G.Production) : Bool :=
-  isPrefix (G.prod_rhs_rev prod) (headSymbsOfState s) &&
+  (G.prod_rhs_rev prod).isPrefixOf (headSymbsOfState s) &&
   Allb A.State (fun stateNew =>
     if isStateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) then
       match A.goto_table stateNew (G.prod_lhs prod) with
@@ -245,7 +203,7 @@ theorem isValidForReduce_correct (s : A.State) (prod : G.Production) :
   intro h
   simp only [isValidForReduce, Bool.and_eq_true] at h
   obtain ⟨hpref, hall⟩ := h
-  refine ⟨isPrefix_correct _ _ hpref, ?_⟩
+  refine ⟨List.isPrefixOf_iff_prefix.mp hpref, ?_⟩
   intro stateNew hvalid
   have hsv : isStateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) = true :=
     isStateValidAfterPop_complete hvalid
@@ -271,7 +229,8 @@ theorem isValidForReduce_correct (s : A.State) (prod : G.Production) :
 def isShiftHeadSymbs (A : Automaton G) : Bool :=
   Allb A.State (fun s => match A.action_table s with
     | .Lookahead_act awp => Allb G.Terminal (fun t => match awp t with
-        | .Shift_act s2 _ => isPrefix (A.past_symb_of_non_init_state s2) (headSymbsOfState s)
+        | .Shift_act s2 _ =>
+            (A.past_symb_of_non_init_state s2).isPrefixOf (headSymbsOfState s)
         | _ => true)
     | _ => true)
 
@@ -286,7 +245,7 @@ theorem isShiftHeadSymbs_correct : isShiftHeadSymbs A = true → shiftHeadSymbs 
     refine forall_of_Allb (P := fun t => _) (fun t ht => ?_) hs
     revert ht
     cases awp t with
-    | Shift_act s2 e => intro ht; exact isPrefix_correct _ _ ht
+    | Shift_act s2 e => intro ht; exact List.isPrefixOf_iff_prefix.mp ht
     | Reduce_act p => intro _; trivial
     | Fail_act => intro _; trivial
 
@@ -296,7 +255,7 @@ gotos, sparse) instead of probing every `(state, nonterminal)` pair — sound be
 def isGotoHeadSymbs (A : Automaton G) : Bool :=
   A.goto_enum.all (fun (s, nt) =>
     match A.goto_table s nt with
-    | some ⟨s2, _⟩ => isPrefix (A.past_symb_of_non_init_state s2) (headSymbsOfState s)
+    | some ⟨s2, _⟩ => (A.past_symb_of_non_init_state s2).isPrefixOf (headSymbsOfState s)
     | none => true)
 
 theorem isGotoHeadSymbs_correct : isGotoHeadSymbs A = true → gotoHeadSymbs A := by
@@ -310,7 +269,7 @@ theorem isGotoHeadSymbs_correct : isGotoHeadSymbs A = true → gotoHeadSymbs A :
     simp only [isGotoHeadSymbs, List.all_eq_true] at h
     have hp := h (s, nt) hmem
     simp only [hg] at hp
-    exact isPrefix_correct _ _ hp
+    exact List.isPrefixOf_iff_prefix.mp hp
 
 /-- Boolean validator for `shiftPastState`. -/
 def isShiftPastState (A : Automaton G) : Bool :=
@@ -417,19 +376,13 @@ item's dot position canonically while the Prop `stateHasFuture` carries an
 existential dot position, so for ε-suffixes the checker is *sound but strictly
 stronger* than the Prop — `Complete.of_check` is the honest interface there.) -/
 
-theorem isPrefix_complete {σ : Type} [DecidableEq σ] {l1 l2 : List σ}
-    (h : Prefix l1 l2) : isPrefix l1 l2 = true := by
-  induction h with
-  | nil l => rfl
-  | cons x _ ih => simp [isPrefix, ih]
-
 theorem isPrefixPred_complete {l1 l2 : List (A.State → Bool)}
     (h : PrefixPred l1 l2) : isPrefixPred l1 l2 = true := by
   induction h with
   | nil l => rfl
   | cons f1 f2 himpl _ ih =>
     simp only [isPrefixPred, Bool.and_eq_true]
-    exact ⟨Allb_of_forall himpl, ih⟩
+    exact ⟨Allb_of_forall fun x => not_or_iff_imp.mpr (himpl x), ih⟩
 
 theorem isStateValidAfterPop_sound {s : A.State}
     {sl : List (Symbol G.Terminal G.Nonterminal)} {pl : List (A.State → Bool)}
@@ -445,7 +398,7 @@ theorem isValidForReduce_complete {s : A.State} {prod : G.Production}
     (h : validForReduce s prod) : isValidForReduce s prod = true := by
   obtain ⟨hpref, hgoto⟩ := h
   simp only [isValidForReduce, Bool.and_eq_true]
-  refine ⟨isPrefix_complete hpref, Allb_of_forall fun stateNew => ?_⟩
+  refine ⟨List.isPrefixOf_iff_prefix.mpr hpref, Allb_of_forall fun stateNew => ?_⟩
   by_cases hsv : isStateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) = true
   · rw [if_pos hsv]
     have hthis := hgoto stateNew (isStateValidAfterPop_sound hsv)
@@ -471,7 +424,7 @@ theorem isShiftHeadSymbs_complete (h : shiftHeadSymbs A) : isShiftHeadSymbs A = 
     have ht := hs t
     revert ht
     cases awp t with
-    | Shift_act s2 e => intro ht; exact isPrefix_complete ht
+    | Shift_act s2 e => intro ht; exact List.isPrefixOf_iff_prefix.mpr ht
     | Reduce_act p => intro _; rfl
     | Fail_act => intro _; rfl
 
@@ -483,7 +436,7 @@ theorem isGotoHeadSymbs_complete (h : gotoHeadSymbs A) : isGotoHeadSymbs A = tru
   revert hs
   cases A.goto_table st nt with
   | none => intro _; rfl
-  | some v => intro hs; exact isPrefix_complete hs
+  | some v => intro hs; exact List.isPrefixOf_iff_prefix.mpr hs
 
 theorem isShiftPastState_complete (h : shiftPastState A) : isShiftPastState A = true := by
   refine Allb_of_forall fun st => ?_

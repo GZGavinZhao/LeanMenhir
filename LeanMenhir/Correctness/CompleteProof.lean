@@ -140,13 +140,13 @@ theorem pop_stack_compat_pop_spec {R : Type} :
 theorem pop_eq_of_popSpec {R : Type} {symbs : List (Symbol G.Terminal G.Nonterminal)} {stk : Stack A}
     {action : arrowsRight R (symbs.map G.symbol_semantic_type)} {stk0 : Stack A} {res : R}
     (h : PopSpec symbs stk action stk0 res) :
-    ∀ hp : Prefix symbs (symbStackOfStack stk), pop symbs stk hp action = (stk0, res) := by
+    ∀ hp : symbs <+: symbStackOfStack stk, pop symbs stk hp action = (stk0, res) := by
   induction h with
   | nil stk0 sem => intro hp; rfl
   | cons st stk0' action' sem stk' res' h' ih =>
     intro hp
     rw [pop]
-    have hcast : cast (congrArg G.symbol_semantic_type (Prefix.inv_cons hp).1.symm) sem = sem :=
+    have hcast : cast (congrArg G.symbol_semantic_type (List.cons_prefix_cons.mp hp).1.symm) sem = sem :=
       eq_of_heq (cast_heq _ _)
     rw [hcast]
     exact ih _
@@ -852,14 +852,14 @@ theorem reduceStep_progress_eq (stk : Stack A) (prod : G.Production) (buf : Buff
     (stk0 : Stack A) (sem : G.symbol_semantic_type (.NT (G.prod_lhs prod)))
     (stateNew : A.NonInitState)
     (e : Symbol.NT (G.prod_lhs prod) = A.last_symb_of_non_init_state stateNew)
-    (hpop : pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+    (hpop : pop (G.prod_rhs_rev prod) stk (Hval.1.trans (Hi.symb_prefix init))
       (G.prod_action prod) = (stk0, sem))
     (hgoto : A.goto_table (stateOfStack init stk0) (G.prod_lhs prod) = some ⟨stateNew, e⟩) :
     reduceStep init stk prod buf Hval Hi =
       .Progress (⟨stateNew, cast (congrArg G.symbol_semantic_type e) sem⟩ :: stk0) buf := by
   unfold reduceStep
   simp only [hpop]
-  have h1 : (pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+  have h1 : (pop (G.prod_rhs_rev prod) stk (Hval.1.trans (Hi.symb_prefix init))
       (G.prod_action prod)).1 = stk0 := congrArg Prod.fst hpop
   split
   · rename_i sn e' hg
@@ -878,14 +878,14 @@ theorem reduceStep_accept_eq (stk : Stack A) (prod : G.Production) (buf : Buffer
     (Hval : validForReduce (stateOfStack init stk) prod) (Hi : StackInvariant init stk)
     (stk0 : Stack A) (sem : G.symbol_semantic_type (.NT (G.prod_lhs prod)))
     (e2 : G.prod_lhs prod = A.start_nt init)
-    (hpop : pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+    (hpop : pop (G.prod_rhs_rev prod) stk (Hval.1.trans (Hi.symb_prefix init))
       (G.prod_action prod) = (stk0, sem))
     (hgoto : A.goto_table (stateOfStack init stk0) (G.prod_lhs prod) = none) :
     reduceStep init stk prod buf Hval Hi =
       .Accept (cast (congrArg (fun nt => G.symbol_semantic_type (Symbol.NT nt)) e2) sem) buf := by
   unfold reduceStep
   simp only [hpop]
-  have h1 : (pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+  have h1 : (pop (G.prod_rhs_rev prod) stk (Hval.1.trans (Hi.symb_prefix init))
       (G.prod_action prod)).1 = stk0 := congrArg Prod.fst hpop
   split
   · rename_i sn e' hg
@@ -921,7 +921,7 @@ theorem reduceStep_next_ptdAux (hc : Complete A) {nt : G.Nonterminal} {word : Li
       ∃ stk', reduceStep init stk prod (ptzBuffer init full_word buffer_end ptz) Hval Hi =
         .Progress stk' (ptdBuffer init full_word buffer_end ptd) ∧
         ptdStackCompat init full_word buffer_end ptd stk' := by
-  have hpop : pop (G.prod_rhs_rev prod) stk (Prefix.trans Hval.1 (Hi.symb_prefix init))
+  have hpop : pop (G.prod_rhs_rev prod) stk (Hval.1.trans (Hi.symb_prefix init))
       (G.prod_action prod) = (stk0, ptlSem ptl (G.prod_action prod)) :=
     pop_eq_of_popSpec (pop_stack_compat_pop_spec ptl stk stk0 (G.prod_action prod) Hstk) _
   cases ptz with
