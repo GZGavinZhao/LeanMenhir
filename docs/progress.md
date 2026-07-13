@@ -214,14 +214,14 @@ Optional future lever (either path): make the **completeness** certificate optio
 - **Mathlib dependency: YES.** Already wired in `lakefile.toml` (`v4.31.0`, matches
   `lean-toolchain`). We reuse Mathlib for `Fintype`, `DecidableEq`, `List`/`Nat`
   lemmas, `Ordering`, and tactics (`omega`, `simp`, `rcases`, ...).
-- **Alphabet encoding:** custom `Comparable` / `ComparableLeibnizEq` classes
-  mirroring Coq (3-way `compare : α → α → Ordering`, `Ordering.swap` plays the
-  role of Coq `CompOpp`). The `Alphabet` class bundles `Comparable` +
-  `ComparableLeibnizEq` + a custom computable `Enumerable` (an explicit `allList`
-  with a completeness proof, mirroring Coq's `Finite.all_list` — *not* Mathlib
-  `Fintype`, which is used only by the untrusted `Generator/`). Custom `compare`
-  kept because the validators are defined in terms of `compare_eqb` / `allList`
-  exactly as in Coq.
+- **Alphabet encoding:** Coq's `Comparable` / `ComparableLeibnizEq` are
+  rendered with the core/Std vocabulary (refactor P4b): `Ord α` supplies the
+  3-way `compare` (`Ordering.swap` plays the role of Coq `CompOpp`),
+  `Std.TransOrd α` its lawfulness, `Std.LawfulEqOrd α` that it decides Leibniz
+  equality. The `Alphabet` class bundles these + a custom computable
+  `Enumerable` (an explicit `allList` with a completeness proof, mirroring
+  Coq's `Finite.all_list` — *not* Mathlib `Fintype`, which is used only by the
+  untrusted `Generator/`). Coq's `compare_eqb` becomes plain `decide (a = b)`.
 - **Module functor encoding:** Coq `Module Type`s become Lean **classes**
   (`Grammar`, `Automaton extends Grammar`), bundling all parameters as fields.
   Code is written in `section`s with `variable [Automaton]` etc. One

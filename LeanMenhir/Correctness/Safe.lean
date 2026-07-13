@@ -34,19 +34,19 @@ theorem Prefix.trans {σ : Type} {l1 l2 l3 : List σ}
     | cons _ h2' => exact Prefix.cons x (ih h2')
 
 /-- Boolean prefix test (Coq `is_prefix`). -/
-def isPrefix {σ : Type} [Comparable σ] : List σ → List σ → Bool
+def isPrefix {σ : Type} [DecidableEq σ] : List σ → List σ → Bool
   | [], _ => true
-  | t1 :: q1, t2 :: q2 => compareEqb t1 t2 && isPrefix q1 q2
+  | t1 :: q1, t2 :: q2 => decide (t1 = t2) && isPrefix q1 q2
   | _ :: _, [] => false
 
-theorem isPrefix_correct {σ : Type} [Comparable σ] [ComparableLeibnizEq σ] :
+theorem isPrefix_correct {σ : Type} [DecidableEq σ] :
     ∀ l1 l2 : List σ, isPrefix l1 l2 = true → Prefix l1 l2
   | [], l2, _ => Prefix.nil l2
   | _ :: _, [], h => by simp [isPrefix] at h
   | t1 :: q1, t2 :: q2, h => by
     simp only [isPrefix, Bool.and_eq_true] at h
     obtain ⟨h1, h2⟩ := h
-    rw [compareEqb_iff] at h1
+    rw [decide_eq_true_eq] at h1
     subst h1
     exact Prefix.cons t1 (isPrefix_correct q1 q2 h2)
 
@@ -89,10 +89,10 @@ variable {G : Grammar} {A : Automaton G}
 /-! ### State annotations -/
 
 /-- The singleton predicate for states (Coq `singleton_state_pred`). -/
-def singletonStatePred (s : A.State) : A.State → Bool := fun s' => compareEqb s s'
+def singletonStatePred (s : A.State) : A.State → Bool := fun s' => decide (s = s')
 
 theorem singletonStatePred_self (s : A.State) : singletonStatePred s s = true :=
-  compareEqb_refl s
+  decide_eq_true rfl
 
 /-- `past_state_of_non_init_state`, extended to all states (Coq
 `past_state_of_state`). -/
@@ -235,7 +235,7 @@ def isValidForReduce (s : A.State) (prod : G.Production) : Bool :=
     if isStateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) then
       match A.goto_table stateNew (G.prod_lhs prod) with
       | none => match stateNew with
-          | .Init i => compareEqb (G.prod_lhs prod) (A.start_nt i)
+          | .Init i => decide (G.prod_lhs prod = A.start_nt i)
           | .Ninit _ => false
       | some _ => true
     else true)
@@ -253,7 +253,7 @@ theorem isValidForReduce_correct (s : A.State) (prod : G.Production) :
       if isStateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) then
         match A.goto_table stateNew (G.prod_lhs prod) with
         | none => match stateNew with
-            | .Init i => compareEqb (G.prod_lhs prod) (A.start_nt i)
+            | .Init i => decide (G.prod_lhs prod = A.start_nt i)
             | .Ninit _ => false
         | some _ => true
       else true)
@@ -264,7 +264,7 @@ theorem isValidForReduce_correct (s : A.State) (prod : G.Production) :
   | some v => intro _; trivial
   | none =>
     cases stateNew with
-    | Init i => intro hk; exact (compareEqb_iff _ _).1 hk
+    | Init i => intro hk; exact of_decide_eq_true hk
     | Ninit n => intro hk; exact absurd hk (by simp)
 
 /-- Boolean validator for `shiftHeadSymbs`. -/
@@ -417,7 +417,7 @@ item's dot position canonically while the Prop `stateHasFuture` carries an
 existential dot position, so for ε-suffixes the checker is *sound but strictly
 stronger* than the Prop — `Complete.of_check` is the honest interface there.) -/
 
-theorem isPrefix_complete {σ : Type} [Alphabet σ] {l1 l2 : List σ}
+theorem isPrefix_complete {σ : Type} [DecidableEq σ] {l1 l2 : List σ}
     (h : Prefix l1 l2) : isPrefix l1 l2 = true := by
   induction h with
   | nil l => rfl
@@ -455,7 +455,7 @@ theorem isValidForReduce_complete {s : A.State} {prod : G.Production}
     | none =>
       intro hthis
       cases stateNew with
-      | Init i => exact (compareEqb_iff _ _).2 hthis
+      | Init i => exact decide_eq_true hthis
       | Ninit n => exact hthis.elim
   · rw [if_neg hsv]
 

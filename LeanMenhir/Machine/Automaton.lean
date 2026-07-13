@@ -25,43 +25,43 @@ namespace State
 variable {InitState NonInitState : Type}
 
 /-- Comparison on states (Coq `StateAlph`): `Init _ < Ninit _`. -/
-def cmp [Comparable InitState] [Comparable NonInitState] :
+def cmp [Ord InitState] [Ord NonInitState] :
     State InitState NonInitState → State InitState NonInitState → Ordering
-  | Init x, Init y => Comparable.compare x y
-  | Ninit x, Ninit y => Comparable.compare x y
+  | Init x, Init y => compare x y
+  | Ninit x, Ninit y => compare x y
   | Init _, Ninit _ => Ordering.lt
   | Ninit _, Init _ => Ordering.gt
 
-instance instComparable [Comparable InitState] [Comparable NonInitState] :
-    Comparable (State InitState NonInitState) where
-  compare := cmp
-  compare_antisym x y := by
-    cases x <;> cases y <;> simp only [cmp]
-    · exact compare_antisym _ _
-    · rfl
-    · rfl
-    · exact compare_antisym _ _
-  compare_trans x y z c hxy hyz := by
-    cases x <;> cases y <;> cases z <;> simp only [cmp] at hxy hyz ⊢
-    · exact compare_trans _ _ _ _ hxy hyz
-    · exact hyz
-    · exact absurd (hxy.trans hyz.symm) (by decide)
-    · exact hxy
-    · exact hxy
-    · exact absurd (hxy.trans hyz.symm) (by decide)
-    · exact hyz
-    · exact compare_trans _ _ _ _ hxy hyz
+instance instOrd [Ord InitState] [Ord NonInitState] :
+    Ord (State InitState NonInitState) := ⟨cmp⟩
 
-instance instComparableLeibnizEq [Comparable InitState] [Comparable NonInitState]
-    [ComparableLeibnizEq InitState] [ComparableLeibnizEq NonInitState] :
-    ComparableLeibnizEq (State InitState NonInitState) where
-  compare_eq x y h := by
+instance instTransOrd [Ord InitState] [Ord NonInitState]
+    [Std.TransOrd InitState] [Std.TransOrd NonInitState] :
+    Std.TransOrd (State InitState NonInitState) where
+  eq_swap {x y} := by
+    show cmp x y = (cmp y x).swap
+    cases x <;> cases y <;> simp only [cmp] <;>
+      first | rfl | exact Std.OrientedCmp.eq_swap
+  isLE_trans {x y z} hxy hyz := by
+    change (cmp x y).isLE = true at hxy
+    change (cmp y z).isLE = true at hyz
+    show (cmp x z).isLE = true
+    cases x <;> cases y <;> cases z <;> simp only [cmp] at hxy hyz ⊢ <;>
+      first | exact Std.TransCmp.isLE_trans hxy hyz | assumption | decide | grind [Ordering.isLE]
+
+instance instLawfulEqOrd [Ord InitState] [Ord NonInitState]
+    [Std.LawfulEqOrd InitState] [Std.LawfulEqOrd NonInitState] :
+    Std.LawfulEqOrd (State InitState NonInitState) where
+  compare_self {x} := by
+    show cmp x x = .eq
+    cases x <;> simp only [cmp] <;> exact Std.ReflCmp.compare_self
+  eq_of_compare {x y} h := by
     change cmp x y = Ordering.eq at h
-    cases x <;> cases y <;> simp only [cmp] at h
-    · exact congrArg Init (compare_eq _ _ h)
-    · exact absurd h (by decide)
-    · exact absurd h (by decide)
-    · exact congrArg Ninit (compare_eq _ _ h)
+    cases x <;> cases y <;> simp only [cmp] at h <;>
+      first
+        | exact congrArg Init (Std.LawfulEqCmp.eq_of_compare h)
+        | exact congrArg Ninit (Std.LawfulEqCmp.eq_of_compare h)
+        | grind
 
 instance instEnumerable [Enumerable InitState] [Enumerable NonInitState] :
     Enumerable (State InitState NonInitState) where

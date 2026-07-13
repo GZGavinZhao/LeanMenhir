@@ -296,7 +296,7 @@ theorem isStartGoto_correct : isStartGoto A = true → startGoto A := by
 def isStartFuture (A : Automaton G) : Bool :=
   Allb A.InitState (fun init =>
     Allb G.Production (fun p =>
-      implb (compareEqb (G.prod_lhs p) (A.start_nt init))
+      implb (decide (G.prod_lhs p = A.start_nt init))
         (Allb G.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0)))))
 
 theorem isStartFuture_correct : isStartFuture A = true → startFuture A := by
@@ -304,11 +304,11 @@ theorem isStartFuture_correct : isStartFuture A = true → startFuture A := by
   refine forall_of_Allb (P := fun init => _) (fun init hi => ?_) h
   intro p hlhs t
   have hp := forall_of_Allb
-    (P := fun p => implb (compareEqb (G.prod_lhs p) (A.start_nt init))
+    (P := fun p => implb (decide (G.prod_lhs p = A.start_nt init))
       (Allb G.Terminal (fun t => decide (t ∈ findItemsMap (.Init init) p 0))) = true)
     (fun p hp => hp) hi p
   rw [implb_eq_true] at hp
-  have hcmp : compareEqb (G.prod_lhs p) (A.start_nt init) = true := (compareEqb_iff _ _).2 hlhs
+  have hcmp : decide (G.prod_lhs p = A.start_nt init) = true := decide_eq_true hlhs
   have hall := hp hcmp
   have ht := forall_of_Allb
     (P := fun t => decide (t ∈ findItemsMap (.Init init) p 0) = true)
@@ -363,10 +363,10 @@ def isEndReduce (A : Automaton G) : Bool :=
     match futureOfProd prod pos with
     | [] =>
       match A.action_table s with
-      | .Default_reduce_act p => compareEqb p prod
+      | .Default_reduce_act p => decide (p = prod)
       | .Lookahead_act awt =>
         match awt look with
-        | .Reduce_act p => compareEqb p prod
+        | .Reduce_act p => decide (p = prod)
         | _ => false
     | _ => true)
 
@@ -388,13 +388,13 @@ theorem isEndReduce_correct : isEndReduce A = true → endReduce A := by
     cases ha : A.action_table s with
     | Default_reduce_act p =>
       simp only [hf, ha] at hb ⊢
-      exact (compareEqb_iff _ _).1 hb
+      exact of_decide_eq_true hb
     | Lookahead_act awt =>
       cases haw : awt look with
       | Shift_act s2 e => simp only [hf, ha, haw] at hb; exact absurd hb (by decide)
       | Reduce_act p =>
         simp only [hf, ha, haw] at hb ⊢
-        exact (compareEqb_iff _ _).1 hb
+        exact of_decide_eq_true hb
       | Fail_act => simp only [hf, ha, haw] at hb; exact absurd hb (by decide)
 
 /-- Boolean validator for `nonTerminalGoto`. -/
@@ -436,7 +436,7 @@ def isNonTerminalClosed (A : Automaton G) : Bool :=
     match futureOfProd prod pos with
     | .NT nt :: q =>
       Allb G.Production (fun p =>
-        implb (compareEqb (G.prod_lhs p) nt)
+        implb (decide (G.prod_lhs p = nt))
           (implb (nullableWord A q) (decide (look ∈ findItemsMap s1 p 0)) &&
             (firstWordSet A q).all (fun look2 => decide (look2 ∈ findItemsMap s1 p 0))))
     | _ => true)
@@ -463,7 +463,7 @@ theorem isNonTerminalClosed_correct : isNonTerminalClosed A = true → nonTermin
       rw [List.all_eq_true] at hb
       have hgp := hb p (allList_complete p)
       rw [implb_eq_true] at hgp
-      have hconj := hgp ((compareEqb_iff _ _).2 hlhs)
+      have hconj := hgp (decide_eq_true hlhs)
       rw [Bool.and_eq_true] at hconj
       obtain ⟨hnull, hfirst⟩ := hconj
       rw [implb_eq_true] at hnull

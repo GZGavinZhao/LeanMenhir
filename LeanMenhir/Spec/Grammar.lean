@@ -27,43 +27,43 @@ variable {Terminal Nonterminal : Type}
 /-- The comparison on symbols: terminals compare greater than nonterminals
 (Coq `SymbolAlph`). Defined as a standalone function so its defining equations
 are usable by `simp`. -/
-def cmp [Comparable Terminal] [Comparable Nonterminal] :
+def cmp [Ord Terminal] [Ord Nonterminal] :
     Symbol Terminal Nonterminal → Symbol Terminal Nonterminal → Ordering
-  | T x, T y => Comparable.compare x y
-  | NT x, NT y => Comparable.compare x y
+  | T x, T y => compare x y
+  | NT x, NT y => compare x y
   | T _, NT _ => Ordering.gt
   | NT _, T _ => Ordering.lt
 
-instance instComparable [Comparable Terminal] [Comparable Nonterminal] :
-    Comparable (Symbol Terminal Nonterminal) where
-  compare := cmp
-  compare_antisym x y := by
-    cases x <;> cases y <;> simp only [cmp]
-    · exact compare_antisym _ _
-    · rfl
-    · rfl
-    · exact compare_antisym _ _
-  compare_trans x y z c hxy hyz := by
-    cases x <;> cases y <;> cases z <;> simp only [cmp] at hxy hyz ⊢
-    · exact compare_trans _ _ _ _ hxy hyz
-    · exact hyz
-    · exact absurd (hxy.trans hyz.symm) (by decide)
-    · exact hxy
-    · exact hxy
-    · exact absurd (hxy.trans hyz.symm) (by decide)
-    · exact hyz
-    · exact compare_trans _ _ _ _ hxy hyz
+instance instOrd [Ord Terminal] [Ord Nonterminal] :
+    Ord (Symbol Terminal Nonterminal) := ⟨cmp⟩
 
-instance instComparableLeibnizEq [Comparable Terminal] [Comparable Nonterminal]
-    [ComparableLeibnizEq Terminal] [ComparableLeibnizEq Nonterminal] :
-    ComparableLeibnizEq (Symbol Terminal Nonterminal) where
-  compare_eq x y h := by
+instance instTransOrd [Ord Terminal] [Ord Nonterminal]
+    [Std.TransOrd Terminal] [Std.TransOrd Nonterminal] :
+    Std.TransOrd (Symbol Terminal Nonterminal) where
+  eq_swap {x y} := by
+    show cmp x y = (cmp y x).swap
+    cases x <;> cases y <;> simp only [cmp] <;>
+      first | rfl | exact Std.OrientedCmp.eq_swap
+  isLE_trans {x y z} hxy hyz := by
+    change (cmp x y).isLE = true at hxy
+    change (cmp y z).isLE = true at hyz
+    show (cmp x z).isLE = true
+    cases x <;> cases y <;> cases z <;> simp only [cmp] at hxy hyz ⊢ <;>
+      first | exact Std.TransCmp.isLE_trans hxy hyz | assumption | decide | grind [Ordering.isLE]
+
+instance instLawfulEqOrd [Ord Terminal] [Ord Nonterminal]
+    [Std.LawfulEqOrd Terminal] [Std.LawfulEqOrd Nonterminal] :
+    Std.LawfulEqOrd (Symbol Terminal Nonterminal) where
+  compare_self {x} := by
+    show cmp x x = .eq
+    cases x <;> simp only [cmp] <;> exact Std.ReflCmp.compare_self
+  eq_of_compare {x y} h := by
     change cmp x y = Ordering.eq at h
-    cases x <;> cases y <;> simp only [cmp] at h
-    · exact congrArg T (compare_eq _ _ h)
-    · exact absurd h (by decide)
-    · exact absurd h (by decide)
-    · exact congrArg NT (compare_eq _ _ h)
+    cases x <;> cases y <;> simp only [cmp] at h <;>
+      first
+        | exact congrArg T (Std.LawfulEqCmp.eq_of_compare h)
+        | exact congrArg NT (Std.LawfulEqCmp.eq_of_compare h)
+        | grind
 
 instance instEnumerable [Enumerable Terminal] [Enumerable Nonterminal] :
     Enumerable (Symbol Terminal Nonterminal) where
