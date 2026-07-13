@@ -109,7 +109,7 @@ def automaton : Automaton miniGrammar :=
 
 /-- The generated tables are safe — certified by **kernel `decide`** (the only
 trusted component is the Lean kernel; no `native_decide`/compiler-trust axiom). -/
-theorem minicalcSafe : Safe automaton := Safe.of_check (by decide)
+theorem minicalcSafe : Safe automaton := by decide
 
 /-- The tables' **grammar half** is exactly `grammar` — production by production,
 in the very fields the bridge consumes, with every index in range (so the `Fin`
@@ -234,7 +234,7 @@ membership hypothesis a CFG-literate reader can audit against `grammar` alone. -
 
 /-- Well-formedness of the MiniCalc `Grammar0` (all indices in range) — kernel
 `decide`. -/
-theorem miniWF : grammar.WF := Grammar0.WF.of_check (by decide)
+theorem miniWF : grammar.WF := by decide
 
 /-- **The verified language is the textbook language of `grammar`**: a token
 word is in the parser's language iff its terminal-index string `Derives` — in

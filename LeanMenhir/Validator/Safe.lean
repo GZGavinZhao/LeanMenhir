@@ -404,4 +404,141 @@ abbrev Safe.check (A : Automaton G) : Bool := isSafe A
 theorem Safe.of_check {A : Automaton G} (h : isSafe A = true) : Safe A :=
   safe_is_validator h
 
+/-! ### Reflection converses: the boolean validator is *complete* for `Safe`
+
+The forward direction (`Safe.of_check`) makes the boolean a sound certificate;
+the converses below make it a *decision procedure*, yielding a genuine
+`Decidable (Safe A)` — so `Safe automaton` can be discharged by a plain
+`by decide` (the kernel work is exactly `Safe.check`, including the
+`goto_enum` sparse iteration).
+
+(No analogous instance is provided for `Complete`: its checker pins each
+item's dot position canonically while the Prop `stateHasFuture` carries an
+existential dot position, so for ε-suffixes the checker is *sound but strictly
+stronger* than the Prop — `Complete.of_check` is the honest interface there.) -/
+
+theorem isPrefix_complete {σ : Type} [Alphabet σ] {l1 l2 : List σ}
+    (h : Prefix l1 l2) : isPrefix l1 l2 = true := by
+  induction h with
+  | nil l => rfl
+  | cons x _ ih => simp [isPrefix, ih]
+
+theorem isPrefixPred_complete {l1 l2 : List (A.State → Bool)}
+    (h : PrefixPred l1 l2) : isPrefixPred l1 l2 = true := by
+  induction h with
+  | nil l => rfl
+  | cons f1 f2 himpl _ ih =>
+    simp only [isPrefixPred, Bool.and_eq_true]
+    exact ⟨Allb_of_forall himpl, ih⟩
+
+theorem isStateValidAfterPop_sound {s : A.State}
+    {sl : List (Symbol G.Terminal G.Nonterminal)} {pl : List (A.State → Bool)}
+    (h : isStateValidAfterPop s sl pl = true) : StateValidAfterPop s sl pl := by
+  induction pl generalizing sl with
+  | nil => exact StateValidAfterPop.nil2 sl
+  | cons p pl ih =>
+    cases sl with
+    | nil => exact StateValidAfterPop.nil1 p pl h
+    | cons st sq => exact StateValidAfterPop.cons st sq p pl (ih h)
+
+theorem isValidForReduce_complete {s : A.State} {prod : G.Production}
+    (h : validForReduce s prod) : isValidForReduce s prod = true := by
+  obtain ⟨hpref, hgoto⟩ := h
+  simp only [isValidForReduce, Bool.and_eq_true]
+  refine ⟨isPrefix_complete hpref, Allb_of_forall fun stateNew => ?_⟩
+  by_cases hsv : isStateValidAfterPop stateNew (G.prod_rhs_rev prod) (headStatesOfState s) = true
+  · rw [if_pos hsv]
+    have hthis := hgoto stateNew (isStateValidAfterPop_sound hsv)
+    revert hthis
+    cases A.goto_table stateNew (G.prod_lhs prod) with
+    | some v => intro _; rfl
+    | none =>
+      intro hthis
+      cases stateNew with
+      | Init i => exact (compareEqb_iff _ _).2 hthis
+      | Ninit n => exact hthis.elim
+  · rw [if_neg hsv]
+
+theorem isShiftHeadSymbs_complete (h : shiftHeadSymbs A) : isShiftHeadSymbs A = true := by
+  refine Allb_of_forall fun st => ?_
+  have hs := h st
+  revert hs
+  cases A.action_table st with
+  | Default_reduce_act p => intro _; rfl
+  | Lookahead_act awp =>
+    intro hs
+    refine Allb_of_forall fun t => ?_
+    have ht := hs t
+    revert ht
+    cases awp t with
+    | Shift_act s2 e => intro ht; exact isPrefix_complete ht
+    | Reduce_act p => intro _; rfl
+    | Fail_act => intro _; rfl
+
+theorem isGotoHeadSymbs_complete (h : gotoHeadSymbs A) : isGotoHeadSymbs A = true := by
+  rw [isGotoHeadSymbs, List.all_eq_true]
+  rintro ⟨st, nt⟩ -
+  dsimp only
+  have hs := h st nt
+  revert hs
+  cases A.goto_table st nt with
+  | none => intro _; rfl
+  | some v => intro hs; exact isPrefix_complete hs
+
+theorem isShiftPastState_complete (h : shiftPastState A) : isShiftPastState A = true := by
+  refine Allb_of_forall fun st => ?_
+  have hs := h st
+  revert hs
+  cases A.action_table st with
+  | Default_reduce_act p => intro _; rfl
+  | Lookahead_act awp =>
+    intro hs
+    refine Allb_of_forall fun t => ?_
+    have ht := hs t
+    revert ht
+    cases awp t with
+    | Shift_act s2 e => intro ht; exact isPrefixPred_complete ht
+    | Reduce_act p => intro _; rfl
+    | Fail_act => intro _; rfl
+
+theorem isGotoPastState_complete (h : gotoPastState A) : isGotoPastState A = true := by
+  rw [isGotoPastState, List.all_eq_true]
+  rintro ⟨st, nt⟩ -
+  dsimp only
+  have hs := h st nt
+  revert hs
+  cases A.goto_table st nt with
+  | none => intro _; rfl
+  | some v => intro hs; exact isPrefixPred_complete hs
+
+theorem isReduceOk_complete (h : reduceOk A) : isReduceOk A = true := by
+  refine Allb_of_forall fun st => ?_
+  have hs := h st
+  revert hs
+  cases A.action_table st with
+  | Default_reduce_act p => intro hs; exact isValidForReduce_complete hs
+  | Lookahead_act awp =>
+    intro hs
+    refine Allb_of_forall fun t => ?_
+    have ht := hs t
+    revert ht
+    cases awp t with
+    | Shift_act s2 e => intro _; rfl
+    | Reduce_act p => intro ht; exact isValidForReduce_complete ht
+    | Fail_act => intro _; rfl
+
+/-- **Reflection**: the boolean validator decides exactly `Safe`. -/
+theorem Safe.check_iff : Safe.check A = true ↔ Safe A := by
+  refine ⟨Safe.of_check, fun h => ?_⟩
+  show isSafe A = true
+  simp only [isSafe, Bool.and_eq_true]
+  exact ⟨⟨⟨⟨isShiftHeadSymbs_complete h.shiftHeadSymbs,
+    isGotoHeadSymbs_complete h.gotoHeadSymbs⟩,
+    isShiftPastState_complete h.shiftPastState⟩,
+    isGotoPastState_complete h.gotoPastState⟩,
+    isReduceOk_complete h.reduceOk⟩
+
+/-- `Safe A` is decidable — `by decide` runs the tuned boolean validator. -/
+instance : Decidable (Safe A) := decidable_of_iff _ Safe.check_iff
+
 end LeanMenhir

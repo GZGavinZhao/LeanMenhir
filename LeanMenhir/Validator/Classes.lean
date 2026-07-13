@@ -32,4 +32,11 @@ theorem forall_of_Allb {α : Type} [Enumerable α] {f : α → Bool} {P : α →
   rw [Allb, List.all_eq_true] at h
   exact hf x (h x (allList_complete x))
 
+/-- Completeness of `Allb` (the converse direction, used by the reflection
+`Decidable` instances): a universally-true boolean is `Allb`-true. -/
+theorem Allb_of_forall {α : Type} [Enumerable α] {f : α → Bool}
+    (h : ∀ x, f x = true) : Allb α f = true := by
+  rw [Allb, List.all_eq_true]
+  exact fun x _ => h x
+
 end LeanMenhir

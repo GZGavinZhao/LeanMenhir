@@ -56,6 +56,22 @@ theorem WF.of_check {g0 : Grammar0} (h : g0.wf = true) : g0.WF := by
     | term t => exact of_decide_eq_true h3
     | nonterm n => exact of_decide_eq_true h3
 
+/-- **Reflection**: `wf` decides exactly `WF`. -/
+theorem WF.check_iff {g0 : Grammar0} : g0.wf = true ↔ g0.WF := by
+  refine ⟨WF.of_check, fun h => ?_⟩
+  unfold wf
+  rw [Bool.and_eq_true, List.all_eq_true]
+  refine ⟨decide_eq_true h.start_lt, fun p hp => ?_⟩
+  rw [Bool.and_eq_true, List.all_eq_true]
+  refine ⟨decide_eq_true (h.lhs_lt p hp), fun s hs => ?_⟩
+  have h3 := h.rhs_lt p hp s hs
+  cases s with
+  | term t => exact decide_eq_true h3
+  | nonterm n => exact decide_eq_true h3
+
+/-- `g0.WF` is decidable — `by decide` runs the boolean `wf`. -/
+instance {g0 : Grammar0} : Decidable g0.WF := decidable_of_iff _ WF.check_iff
+
 /-! ### The textbook derivation relation -/
 
 mutual
