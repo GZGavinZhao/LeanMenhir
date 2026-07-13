@@ -36,7 +36,8 @@ proof-relevant form; the recognition faces are corollaries.
 | `grammar_unambiguous` | any two derivations of a word have equal **semantic value** (value-level; instantiate values with syntax trees for tree-level uniqueness) |
 | `parser_consumes_exactly` | EOF-anchored grammar + EOF-free lexer ⇒ acceptance means **the whole input and nothing else** was parsed (`toks ++ [eof] ∈ language …`) |
 | `runtime_sound` / `runtime_complete` / `runtime_consumes_exactly` | all of the above transferred to the *executed* driver `Runtime.parseList` (the parser cannot distinguish denotationally equal buffers — `parse_congr`) |
-| `tables_grammar_faithful` | the grammar those theorems quantify over is exactly the `Grammar0` you wrote — production by production, no index clamping |
+| `tables_grammar_faithful` | (legacy table blobs) the tables' grammar half matches your `Grammar0` |
+| `Grammar0.toGrammar_derives_iff` (+ `Typed`) | **the parser's language is, provably, the textbook language of your `Grammar0`**: membership in the verified grammar ↔ the 15-line, plain-`Nat` `Grammar0.Derives` on the terminal string (see MiniCalc's `mini_language_eq`/`mini_accepts`) |
 
 ## The trusted base
 
@@ -85,11 +86,14 @@ not part of the proof.
 - **Unambiguity is value-level** (same as the Coq original).
 - **`Timeout`** with the runtime fuel can effectively only be produced by a
   non-terminating table set, not by a valid-but-deep parse.
-- The `… = true` certificate hypotheses are Coq heritage; the in-progress
-  idiomatic refactor (see the "LeanMenhir Idiomatic Refactor" plan) replaces
-  them with `Prop`-valued `Safe A` / `Complete A` (phase P2). The
-  `(G : Grammar)` / `(A : Automaton G)` split (phase P1a) is done: every
-  theorem now binds the grammar explicitly.
+- Validator hypotheses are the `Prop` structures `Safe A` / `Complete A`
+  (named, documented fields), discharged per automaton by
+  `Safe.of_check (by decide)` / `(by rfl)` / `(by native_decide)`.
+  Genuine `Decidable (Safe A)` instances (direct `by decide` on the Props)
+  are a planned follow-up (refactor phase P5), as are the migration to core
+  `Ord`/`Std.TransCmp`/`List.IsPrefix` (P4) and the `Spec/Machine/Correctness`
+  directory reorganisation (P7b).
+- For Coq cross-checking, see `docs/COQ-MAP.md`.
 
 ## Checking axiom hygiene yourself
 
