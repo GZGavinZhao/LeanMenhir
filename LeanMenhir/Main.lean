@@ -27,8 +27,8 @@ def parse (init : A.InitState) (hsafe : Safe A) (logNSteps : Nat)
     (buffer : Buffer G) : ParseResult A (G.symbol_semantic_type (.NT (A.start_nt init))) :=
   LeanMenhir.parse init hsafe buffer logNSteps
 
-/-- **Soundness** (Coq `Main.parse_correct`): a successful parse returns a real
-parse tree of the recognised word with the produced semantic value. -/
+/-- **Soundness**, Coq-shaped match-conclusion statement (Coq
+`Main.parse_correct`). Prefer the equation-hypothesis primary `parse_sound`. -/
 theorem parse_correct (init : A.InitState) (hsafe : Safe A)
     (logNSteps : Nat) (buffer : Buffer G) :
     match parse init hsafe logNSteps buffer with
@@ -42,7 +42,11 @@ theorem parse_correct (init : A.InitState) (hsafe : Safe A)
 accepts the tables, then for *every* parse tree of `word`, parsing `word`
 (followed by any `bufferEnd`) with budget `2 ^ logNSteps` returns that tree's
 semantics, consumes exactly `word`, and `pt_size tree ≤ 2 ^ logNSteps`; with too
-little fuel it times out, and it never fails. -/
+little fuel it times out, and it never fails.
+
+Coq-shaped match-conclusion statement (Coq `Main.parse_complete`); prefer the
+equation-hypothesis primaries `parse_complete_parsed` / `parse_never_rejects` /
+`parse_timeout_bound`. -/
 theorem parse_complete (init : A.InitState) (hsafe : Safe A)
     (hcomplete : Complete A) (logNSteps : Nat) (word : List G.Token)
     (bufferEnd : Buffer G) (tree : ParseTree G (.NT (A.start_nt init)) word) :
@@ -52,6 +56,57 @@ theorem parse_complete (init : A.InitState) (hsafe : Safe A)
     | .Timeout => 2 ^ logNSteps < ptSize tree
     | .Fail _ _ => False :=
   LeanMenhir.parse_complete init word bufferEnd hsafe hcomplete tree logNSteps
+
+/-- **Soundness** (equation-hypothesis primary) — *if the parser accepts, the
+input really is in the language and the value is its meaning*: `.Parsed sem rest`
+implies some word derives from the start symbol, the buffer denotes exactly that
+word followed by `rest`, and `sem` is the derivation's semantics. -/
+theorem parse_sound (init : A.InitState) (hsafe : Safe A) {fuel : Nat}
+    {buffer : Buffer G} {sem : G.symbol_semantic_type (.NT (A.start_nt init))}
+    {rest : Buffer G}
+    (h : parse init hsafe fuel buffer = .Parsed sem rest) :
+    ∃ (word : List G.Token) (pt : ParseTree G (.NT (A.start_nt init)) word),
+      buffer.get = (word ++ₛ rest).get ∧ ptSem pt = sem := by
+  have H := parse_correct init hsafe fuel buffer
+  rw [h] at H
+  exact H
+
+/-- **Completeness** (equation-hypothesis primary) — *every derivation is found*:
+parsing a derivable word returns exactly the derivation's semantic value and the
+untouched continuation, given fuel covering the derivation's size. -/
+theorem parse_complete_parsed (init : A.InitState) (hsafe : Safe A)
+    (hcomplete : Complete A) {word : List G.Token} {bufferEnd : Buffer G}
+    (tree : ParseTree G (.NT (A.start_nt init)) word) {fuel : Nat}
+    (hfuel : ptSize tree ≤ 2 ^ fuel) :
+    parse init hsafe fuel (word ++ₛ bufferEnd) = .Parsed (ptSem tree) bufferEnd := by
+  have H := parse_complete init hsafe hcomplete fuel word bufferEnd tree
+  cases hp : parse init hsafe fuel (word ++ₛ bufferEnd) with
+  | Parsed sem buff => rw [hp] at H; rw [H.1, H.2.1]
+  | Timeout => rw [hp] at H; omega
+  | Fail st tok => rw [hp] at H; exact H.elim
+
+/-- **No spurious rejection** (equation-hypothesis primary): derivable input is
+never `.Fail`ed, at any fuel. -/
+theorem parse_never_rejects (init : A.InitState) (hsafe : Safe A)
+    (hcomplete : Complete A) {word : List G.Token} {bufferEnd : Buffer G}
+    (tree : ParseTree G (.NT (A.start_nt init)) word) (fuel : Nat)
+    (st : A.State) (tok : G.Token) :
+    parse init hsafe fuel (word ++ₛ bufferEnd) ≠ .Fail st tok := by
+  intro hp
+  have H := parse_complete init hsafe hcomplete fuel word bufferEnd tree
+  rw [hp] at H
+  exact H
+
+/-- **Timeout bound** (equation-hypothesis primary): a timeout on derivable
+input means the fuel really was smaller than the derivation. -/
+theorem parse_timeout_bound (init : A.InitState) (hsafe : Safe A)
+    (hcomplete : Complete A) {word : List G.Token} {bufferEnd : Buffer G}
+    (tree : ParseTree G (.NT (A.start_nt init)) word) {fuel : Nat}
+    (h : parse init hsafe fuel (word ++ₛ bufferEnd) = .Timeout) :
+    2 ^ fuel < ptSize tree := by
+  have H := parse_complete init hsafe hcomplete fuel word bufferEnd tree
+  rw [h] at H
+  exact H
 
 /-- **Completeness, extensionally** : `parse_complete` for *any* input buffer
 that denotes the same token stream as `word ++ₛ bufferEnd` — in particular the
@@ -128,12 +183,14 @@ theorem parse_correct_anchored (init : A.InitState) (hsafe : Safe A)
   exact ⟨hweq ▸ pt, by rw [ptSem_cast_word hweq pt]; exact hsem⟩
 
 /-- **Unambiguity** (Coq `Main.unambiguity`): if both validators accept and the
-token type is inhabited, any two parse trees of the same word have the same
-semantic value. -/
-theorem unambiguity (hsafe : Safe A) (hcomplete : Complete A)
-    (tok : G.Token) (init : A.InitState) (word : List G.Token)
+token type is inhabited (`[Nonempty G.Token]` — the honest rendering of Coq's
+`inhabited token`; the witness is proof-only), any two parse trees of the same
+word have the same semantic value. -/
+theorem unambiguity [htok : Nonempty G.Token] (hsafe : Safe A) (hcomplete : Complete A)
+    (init : A.InitState) (word : List G.Token)
     (tree1 tree2 : ParseTree G (.NT (A.start_nt init)) word) :
     ptSem tree1 = ptSem tree2 := by
+  obtain ⟨tok⟩ := htok
   have H1 := parse_complete init hsafe hcomplete (ptSize tree1) word (Buf.const tok) tree1
   have H2 := parse_complete init hsafe hcomplete (ptSize tree1) word (Buf.const tok) tree2
   cases hp : parse init hsafe (ptSize tree1) (word ++ₛ Buf.const tok) with

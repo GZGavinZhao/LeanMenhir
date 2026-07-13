@@ -259,7 +259,7 @@ theorem mini_accepts (word : List miniGrammar.Token)
 theorem mini_unambiguous (word : List miniGrammar.Token)
     (tree1 tree2 : ParseTree miniGrammar (.NT (automaton.start_nt (0 : Fin 1))) word) :
     ptSem tree1 = ptSem tree2 :=
-  Main.unambiguity (A := automaton) minicalcSafe minicalcComplete ((6 : Fin 10), .num 0)
+  Main.unambiguity (A := automaton) (htok := ⟨((6 : Fin 10), .num 0)⟩) minicalcSafe minicalcComplete
     (0 : Fin 1) word tree1 tree2
 
 /-- The EOF token that `lexString` pads with. -/

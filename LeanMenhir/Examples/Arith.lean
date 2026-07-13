@@ -122,7 +122,7 @@ same word have equal semantic value. -/
 theorem arith_unambiguous (word : List arithGrammar.Token)
     (tree1 tree2 : ParseTree arithGrammar (.NT (automaton.start_nt (0 : Fin 1))) word) :
     ptSem tree1 = ptSem tree2 :=
-  Main.unambiguity (A := automaton) isSafe_ok isComplete_ok ((2 : Fin 4), 0) (0 : Fin 1)
+  Main.unambiguity (A := automaton) (htok := ⟨((2 : Fin 4), 0)⟩) isSafe_ok isComplete_ok (0 : Fin 1)
     word tree1 tree2
 
 end LeanMenhir.Examples.Arith

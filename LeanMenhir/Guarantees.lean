@@ -72,10 +72,8 @@ theorem parser_sound (init : A.InitState) (hsafe : Safe A)
     {rest : Buffer G}
     (h : Main.parse init hsafe fuel buffer = .Parsed sem rest) :
     ∃ (word : List G.Token) (pt : ParseTree G (.NT (A.start_nt init)) word),
-      buffer.get = (word ++ₛ rest).get ∧ ptSem pt = sem := by
-  have H := Main.parse_correct init hsafe fuel buffer
-  rw [h] at H
-  exact H
+      buffer.get = (word ++ₛ rest).get ∧ ptSem pt = sem :=
+  Main.parse_sound init hsafe h
 
 /-- **Soundness, recognition face** — *if the parser accepts, the consumed
 prefix is a word of the language.* The membership-only corollary of
@@ -108,15 +106,8 @@ theorem parser_complete (init : A.InitState) (hsafe : Safe A)
     (word : List G.Token) (bufferEnd : Buffer G)
     (tree : ParseTree G (.NT (A.start_nt init)) word)
     (fuel : Nat) (hfuel : ptSize tree ≤ 2 ^ fuel) :
-    Main.parse init hsafe fuel (word ++ₛ bufferEnd) = .Parsed (ptSem tree) bufferEnd := by
-  have H := Main.parse_complete init hsafe hcomplete fuel word bufferEnd tree
-  cases hp : Main.parse init hsafe fuel (word ++ₛ bufferEnd) with
-  | Parsed sem buff =>
-    rw [hp] at H
-    obtain ⟨h1, h2, -⟩ := H
-    rw [h1, h2]
-  | Timeout => rw [hp] at H; omega
-  | Fail st tok => rw [hp] at H; exact H.elim
+    Main.parse init hsafe fuel (word ++ₛ bufferEnd) = .Parsed (ptSem tree) bufferEnd :=
+  Main.parse_complete_parsed init hsafe hcomplete tree hfuel
 
 /-- **Completeness, recognition face** — *every word of the language is
 accepted.*
@@ -153,10 +144,7 @@ theorem parser_never_rejects_valid (init : A.InitState)
     (fuel : Nat) (st : A.State) (tok : G.Token) :
     Main.parse init hsafe fuel (word ++ₛ bufferEnd) ≠ .Fail st tok := by
   obtain ⟨tree⟩ := hmem
-  intro hp
-  have H := Main.parse_complete init hsafe hcomplete fuel word bufferEnd tree
-  rw [hp] at H
-  exact H
+  exact Main.parse_never_rejects init hsafe hcomplete tree fuel st tok
 
 /-! ## 3. Unambiguity -/
 
@@ -175,9 +163,8 @@ theorem grammar_unambiguous [Nonempty G.Token]
     (hsafe : Safe A) (hcomplete : Complete A)
     (init : A.InitState) (word : List G.Token)
     (tree1 tree2 : ParseTree G (.NT (A.start_nt init)) word) :
-    ptSem tree1 = ptSem tree2 := by
-  obtain ⟨tok⟩ := ‹Nonempty G.Token›
-  exact Main.unambiguity hsafe hcomplete tok init word tree1 tree2
+    ptSem tree1 = ptSem tree2 :=
+  Main.unambiguity hsafe hcomplete init word tree1 tree2
 
 /-! ## 4. Exact consumption (EOF anchoring) -/
 

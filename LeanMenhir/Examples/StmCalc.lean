@@ -208,7 +208,7 @@ theorem stm_parses (logNSteps : Nat) (word : List stmGrammar.Token)
 theorem stm_unambiguous (word : List stmGrammar.Token)
     (tree1 tree2 : ParseTree stmGrammar (.NT (automaton.start_nt (0 : Fin 1))) word) :
     ptSem tree1 = ptSem tree2 :=
-  Main.unambiguity (A := automaton) stmSafe stmComplete ((((), ⟨4, ()⟩)) : Tok)
+  Main.unambiguity (A := automaton) (htok := ⟨(((), ⟨4, ()⟩) : Tok)⟩) stmSafe stmComplete
     (0 : Fin 1) word tree1 tree2
 
 end LeanMenhir.Examples.StmCalc
