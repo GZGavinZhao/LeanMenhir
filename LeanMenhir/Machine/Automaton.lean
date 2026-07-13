@@ -7,7 +7,7 @@ This Lean port is a derivative work, distributed under LGPL-3.0-or-later.
 The LR automaton table interface: states, actions (shift/reduce/fail), the
 action/goto tables, and the validation annotations.
 -/
-import LeanMenhir.Grammar
+import LeanMenhir.Spec.Grammar
 
 namespace LeanMenhir
 

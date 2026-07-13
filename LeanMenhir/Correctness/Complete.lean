@@ -18,9 +18,9 @@ the boolean validator explicitly, mirroring `Validator/Safe.lean`. The
 `Interpreter_complete` proof only uses the eight `complete` sub-properties
 abstractly, so this representation choice is invisible there.
 -/
-import LeanMenhir.Automaton
-import LeanMenhir.Validator.Classes
-import LeanMenhir.Validator.Safe
+import LeanMenhir.Machine.Automaton
+import LeanMenhir.Correctness.Classes
+import LeanMenhir.Correctness.Safe
 
 namespace LeanMenhir
 

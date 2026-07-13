@@ -8,7 +8,7 @@ The grammar interface (symbols, productions, semantic actions, tokens) together
 with the dependently-typed `ParseTree` / `ParseTreeList` families that give the
 semantics of a grammar.
 -/
-import LeanMenhir.Alphabet
+import LeanMenhir.Spec.Alphabet
 
 namespace LeanMenhir
 

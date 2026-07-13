@@ -12,8 +12,8 @@ The proof follows the Coq development: it traverses the parse tree using
 "dotted parse trees" (a parse tree with a hole = a `pt_zipper` plus a sub-tree),
 showing each parser step corresponds to one traversal step.
 -/
-import LeanMenhir.Interpreter
-import LeanMenhir.Validator.Complete
+import LeanMenhir.Machine.Interpreter
+import LeanMenhir.Correctness.Complete
 
 
 namespace LeanMenhir

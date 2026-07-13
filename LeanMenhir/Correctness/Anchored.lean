@@ -26,8 +26,8 @@ input plus the EOF sentinel — no trailing garbage.**
 
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
-import LeanMenhir.Grammar
-import LeanMenhir.Validator.Classes
+import LeanMenhir.Spec.Grammar
+import LeanMenhir.Correctness.Classes
 
 namespace LeanMenhir
 

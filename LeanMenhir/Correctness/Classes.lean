@@ -12,7 +12,7 @@ so we instead define the boolean validators explicitly and prove the
 (`forallb`-style combinators) used by both `Validator/Safe` and
 `Validator/Complete`.
 -/
-import LeanMenhir.Alphabet
+import LeanMenhir.Spec.Alphabet
 
 namespace LeanMenhir
 

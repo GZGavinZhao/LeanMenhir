@@ -5,7 +5,7 @@ automata. Part of the (untrusted) generator support.
 
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
-import LeanMenhir.Alphabet
+import LeanMenhir.Spec.Alphabet
 
 namespace LeanMenhir
 

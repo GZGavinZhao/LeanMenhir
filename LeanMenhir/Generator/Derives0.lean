@@ -21,7 +21,7 @@ terminal-index string does, which is why the `Grammar0`-level language is over
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Generator.Grammar0
-import LeanMenhir.Language
+import LeanMenhir.Spec.Language
 
 namespace LeanMenhir
 namespace Gen

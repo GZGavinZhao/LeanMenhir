@@ -12,9 +12,9 @@ tooling — a bug there can make a build fail, never make a theorem lie.
 
 | # | File | What to check | Defines |
 |---|------|----------------|---------|
-| 1 | `LeanMenhir/Grammar.lean` | `Grammar`, `Symbol`, `ParseTree`, `ptSem`, `ptSize`. A `ParseTree (.NT n) w` is a derivation of the token word `w` from nonterminal `n`; `ptSem` folds the semantic actions over it. Note the RHS-reversed convention (`prod_rhs_rev`) and that a `ParseTreeList`'s word is the concatenation in *grammar* order. Then `LeanMenhir/Language.lean` (30 lines): the propositional form — `Derives nt w := Nonempty (ParseTree (.NT nt) w)` and `w ∈ language nt` — i.e. **membership in the language is the existence of a derivation**. | **"the language"** |
-| 2 | `LeanMenhir/Buf.lean` | `Buf` with `head`/`tail`/`cons`/`appendList` and the denotation `get : Buf α → Nat → α`. All statements compare buffers by `get` (the token stream they denote). | **"the input"** |
-| 3 | `LeanMenhir/Interpreter.lean` | The signature and body of `parse` (fuelled LR driver; reads the input only via `head`/`tail`), and `ParseResult` (`Parsed`/`Timeout`/`Fail`). For applications, also `Runtime.parseList` (pads a finite token list with an EOF filler, projects into `Except`). | **"what runs"** |
+| 1 | `LeanMenhir/Spec/Grammar.lean` | `Grammar`, `Symbol`, `ParseTree`, `ptSem`, `ptSize`. A `ParseTree (.NT n) w` is a derivation of the token word `w` from nonterminal `n`; `ptSem` folds the semantic actions over it. Note the RHS-reversed convention (`prod_rhs_rev`) and that a `ParseTreeList`'s word is the concatenation in *grammar* order. Then `LeanMenhir/Spec/Language.lean` (30 lines): the propositional form — `Derives nt w := Nonempty (ParseTree (.NT nt) w)` and `w ∈ language nt` — i.e. **membership in the language is the existence of a derivation**. | **"the language"** |
+| 2 | `LeanMenhir/Spec/Buffer.lean` | `Buf` with `head`/`tail`/`cons`/`appendList` and the denotation `get : Buf α → Nat → α`. All statements compare buffers by `get` (the token stream they denote). | **"the input"** |
+| 3 | `LeanMenhir/Machine/Interpreter.lean` | The signature and body of `parse` (fuelled LR driver; reads the input only via `head`/`tail`), and `ParseResult` (`Parsed`/`Timeout`/`Fail`). For applications, also `Runtime.parseList` (pads a finite token list with an EOF filler, projects into `Except`). | **"what runs"** |
 | 4 | `LeanMenhir/Guarantees.lean` | The nine end-to-end theorems, each with an informal reading, its caveats, and a build-enforced `#print axioms` guard. | **"what is guaranteed"** |
 
 ## The guarantees, informally
@@ -62,8 +62,8 @@ proof-relevant form; the recognition faces are corollaries.
 - The boolean validator kernels (`isSafe`, `isComplete`, `tablesMatchGrammar`,
   `isEofAnchored`) — they only *produce* certificates; their soundness lemmas
   (`safe_is_validator`, …) are proved.
-- All proof files (`Interpreter/Correct.lean`, `Interpreter/Complete.lean`,
-  `Interpreter/Congr.lean`, `Validator/*`, `Anchored.lean`) — 2000+ lines you
+- All proof files (`Correctness/Sound.lean`, `Correctness/CompleteProof.lean`,
+  `Correctness/Congr.lean`, `Correctness/{Safe,Complete}*`, `Anchored.lean`) — 2000+ lines you
   never need to open: the kernel checked them.
 
 ## Per-example certificate stories

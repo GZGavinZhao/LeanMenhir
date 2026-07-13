@@ -10,21 +10,21 @@ load-bearing for this table.
 
 | Coq | Lean | Notes |
 |---|---|---|
-| `Alphabet.v` | `LeanMenhir/Alphabet.lean` | `comparison` ↦ `Ordering`; `Finite.all_list` ↦ `Enumerable.allList` (computable) |
-| `Grammar.v` | `LeanMenhir/Grammar.lean` | `Grammar.T` module type ↦ `structure Grammar`; `parse_tree`/`parse_tree_list` ↦ `ParseTree G`/`ParseTreeList G` with constructors `leaf`/`node`/`nil`/`cons` (ex `Terminal_pt`/`Non_terminal_pt`/`Nil_ptl`/`Cons_ptl`) |
-| — | `LeanMenhir/Language.lean` | no Coq counterpart: named language membership (`Grammar.Derives`, `G.language`) |
-| `Automaton.v` | `LeanMenhir/Automaton.lean` | `Automaton.T` (extends grammar via functor) ↦ `structure Automaton (G : Grammar)` (explicit grammar parameter); adds `goto_enum`(+`_complete`) for sparse validator iteration |
-| `Validator_classes.v` | `LeanMenhir/Validator/Classes.lean` | Coq `IsValidator`+`Derive` reflection ↦ hand-written booleans + soundness lemmas |
-| `Validator_safe.v` | `LeanMenhir/Validator/Safe.lean` | `safe` ∧-chain ↦ `structure Safe (A) : Prop`; `is_safe` ↦ `isSafe`/`Safe.check`; `safe_is_validator` ↦ `Safe.of_check` |
-| `Validator_complete.v` | `LeanMenhir/Validator/Complete.lean` | `complete` ↦ `structure Complete (A) : Prop`; AVL `TerminalSet`/`FMap` ↦ lists over `items_of_state` |
-| `Interpreter.v` | `LeanMenhir/Interpreter.lean` | `Stream` buffer ↦ `Buf` (`LeanMenhir/Buf.lean`, O(1) head/tail, denotation `get`) |
-| `Interpreter_correct.v` | `LeanMenhir/Interpreter/Correct.lean` | buffer equality ↦ pointwise `get`-equality |
-| `Interpreter_complete.v` | `LeanMenhir/Interpreter/Complete.lean` | same zipper proof architecture |
-| — | `LeanMenhir/Interpreter/Congr.lean` | no Coq counterpart: interpreter extensionality in the buffer (leak-1 fix; Coq streams don't need it) |
-| — | `LeanMenhir/Anchored.lean` | no Coq counterpart: EOF-anchoring, exact-consumption (leak-3 fix) |
+| `Alphabet.v` | `LeanMenhir/Spec/Alphabet.lean` | `comparison` ↦ `Ordering`; `Finite.all_list` ↦ `Enumerable.allList` (computable) |
+| `Grammar.v` | `LeanMenhir/Spec/Grammar.lean` | `Grammar.T` module type ↦ `structure Grammar`; `parse_tree`/`parse_tree_list` ↦ `ParseTree G`/`ParseTreeList G` with constructors `leaf`/`node`/`nil`/`cons` (ex `Terminal_pt`/`Non_terminal_pt`/`Nil_ptl`/`Cons_ptl`) |
+| — | `LeanMenhir/Spec/Language.lean` | no Coq counterpart: named language membership (`Grammar.Derives`, `G.language`) |
+| `Automaton.v` | `LeanMenhir/Machine/Automaton.lean` | `Automaton.T` (extends grammar via functor) ↦ `structure Automaton (G : Grammar)` (explicit grammar parameter); adds `goto_enum`(+`_complete`) for sparse validator iteration |
+| `Validator_classes.v` | `LeanMenhir/Correctness/Classes.lean` | Coq `IsValidator`+`Derive` reflection ↦ hand-written booleans + soundness lemmas |
+| `Validator_safe.v` | `LeanMenhir/Correctness/Safe.lean` | `safe` ∧-chain ↦ `structure Safe (A) : Prop`; `is_safe` ↦ `isSafe`/`Safe.check`; `safe_is_validator` ↦ `Safe.of_check` |
+| `Validator_complete.v` | `LeanMenhir/Correctness/Complete.lean` | `complete` ↦ `structure Complete (A) : Prop`; AVL `TerminalSet`/`FMap` ↦ lists over `items_of_state` |
+| `Interpreter.v` | `LeanMenhir/Machine/Interpreter.lean` | `Stream` buffer ↦ `Buf` (`LeanMenhir/Spec/Buffer.lean`, O(1) head/tail, denotation `get`) |
+| `Interpreter_correct.v` | `LeanMenhir/Correctness/Sound.lean` | buffer equality ↦ pointwise `get`-equality |
+| `Interpreter_complete.v` | `LeanMenhir/Correctness/CompleteProof.lean` | same zipper proof architecture |
+| — | `LeanMenhir/Correctness/Congr.lean` | no Coq counterpart: interpreter extensionality in the buffer (leak-1 fix; Coq streams don't need it) |
+| — | `LeanMenhir/Correctness/Anchored.lean` | no Coq counterpart: EOF-anchoring, exact-consumption (leak-3 fix) |
 | `Main.v` | `LeanMenhir/Main.lean` | plus equation-hypothesis primaries (`parse_sound`, `parse_complete_parsed`, …) |
 | — | `LeanMenhir/Guarantees.lean` | no Coq counterpart: the review surface |
-| — | `LeanMenhir/Runtime.lean`, `Generator/*` | no Coq counterpart: executable driver and in-Lean (untrusted) table generator; in Coq these roles are played by menhir's `--coq` backend emitting the tables |
+| — | `LeanMenhir/Runtime.lean`, `Generator/*` | no Coq counterpart: executable driver and in-Lean (untrusted) table generator; in Coq these roles are played by menhir's `--coq` backend emitting the tables. `Generator/Grammar0.lean`+`Derives0.lean`: the human-written grammar, its definitional interpretation (`toGrammar`), and the textbook `Grammar0.Derives` + transport |
 
 ## Key declarations
 

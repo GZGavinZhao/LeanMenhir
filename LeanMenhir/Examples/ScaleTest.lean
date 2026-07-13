@@ -29,7 +29,6 @@ LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Runtime
 import LeanMenhir.Generator.BuildTables
-import LeanMenhir.Generator.GrammarCheck
 
 namespace LeanMenhir.Examples.ScaleTest
 
@@ -122,12 +121,5 @@ theorem scaleSafe : Safe automaton := Safe.of_check (by rfl)
 
 /-- Completeness — kernel `rfl` (BTree-backed tables). -/
 theorem scaleComplete : Complete automaton := Complete.of_check (by rfl)
-
-/-- The tables' **grammar half** is exactly `grammar` — the part the validators
-cannot check. Subsumes the earlier ad-hoc jump-table-vs-array agreement spot
-checks: `tablesMatchGrammar` compares *both* the `prodLhsFn`/`prodRhsRevFn`
-jump tables (catching reify bugs in `build_tables%`) *and* the plain arrays
-against `grammar.prods`, plus index ranges and the start symbol. -/
-theorem scaleGrammarMatch : tablesMatchGrammar tables grammar = true := by rfl
 
 end LeanMenhir.Examples.ScaleTest

@@ -17,8 +17,8 @@ representation for an O(1) buffer turned "denotes the same stream" into a real
 
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
-import LeanMenhir.Interpreter.Correct
-import LeanMenhir.Interpreter.Complete
+import LeanMenhir.Correctness.Sound
+import LeanMenhir.Correctness.CompleteProof
 
 namespace LeanMenhir
 

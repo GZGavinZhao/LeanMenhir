@@ -26,7 +26,7 @@ this one under `List.map token_term` and is provided at the `Grammar0` level
 
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
-import LeanMenhir.Grammar
+import LeanMenhir.Spec.Grammar
 
 namespace LeanMenhir
 

@@ -12,8 +12,8 @@ safe` that the safety validator accepts the tables.
 Unlike the Coq version, equality proofs are carried directly (Lean erases `Prop`,
 so casts are runtime no-ops and the proofs cannot block computation).
 -/
-import LeanMenhir.Validator.Safe
-import LeanMenhir.Buf
+import LeanMenhir.Correctness.Safe
+import LeanMenhir.Spec.Buffer
 
 namespace LeanMenhir
 

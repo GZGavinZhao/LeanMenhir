@@ -12,20 +12,20 @@ requires no knowledge of the proof architecture.
 
 Read, in order:
 
-1. `LeanMenhir/Grammar.lean` — what a grammar, a derivation (`ParseTree G`), and
-   its semantic value (`ptSem`) are; `LeanMenhir/Language.lean` — the
+1. `LeanMenhir/Spec/Grammar.lean` — what a grammar, a derivation (`ParseTree G`), and
+   its semantic value (`ptSem`) are; `LeanMenhir/Spec/Language.lean` — the
    propositional form: `Derives` / `word ∈ language nt` ("a derivation exists").
    **These define "the language".**
-2. `LeanMenhir/Buf.lean` — what an input buffer denotes (`Buf.get`).
+2. `LeanMenhir/Spec/Buffer.lean` — what an input buffer denotes (`Buf.get`).
    **This defines "the input".**
-3. `LeanMenhir/Interpreter.lean` — the signature and definition of `parse`
+3. `LeanMenhir/Machine/Interpreter.lean` — the signature and definition of `parse`
    (and `LeanMenhir/Runtime.lean` for the executable driver `parseList`).
    **This defines "what runs".**
 4. This file. **This defines "what is guaranteed".**
 
 Trusted base: the Lean kernel, the definitions in (1)–(3), the `Grammar0` you
-wrote (tied to the tables by `tables_grammar_faithful`), and your lexer's EOF
-discipline (hypothesis `hlex` below). Everything else — the LR generator, the
+wrote (the verified grammar is a definitional function of it — see §6), and
+your lexer's EOF discipline (hypothesis `hlex` below). Everything else — the LR generator, the
 table blobs, the validators' boolean kernels, the 2000 lines of ported proofs —
 is *untrusted*: bugs there can only make certificates fail to check, never make
 a theorem below claim something false.
@@ -42,8 +42,7 @@ Current caveats a reviewer must know (tracked in the idiomatic-refactor plan):
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Runtime
-import LeanMenhir.Generator.GrammarCheck
-import LeanMenhir.Language
+import LeanMenhir.Spec.Language
 
 namespace LeanMenhir
 namespace Guarantees
@@ -254,27 +253,17 @@ theorem runtime_consumes_exactly {E : Type} (init : A.InitState)
     Runtime.parseList_sound_anchored init hsafe eof toks onFail onTimeout hanch hlex h
   ⟨⟨pt⟩, pt, hsem⟩
 
-/-! ## 6. The theorems are about *your* grammar -/
+/-! ## 6. The theorems are about *your* grammar
 
-omit G A in
-/-- **Grammar faithfulness** — *the grammar all theorems above quantify over is
-exactly the `Grammar0` you wrote.*
-
-The safety/completeness validators certify only the *automaton* half of a
-generated table blob; a generator bug could produce a perfectly safe+complete
-automaton **for the wrong grammar**. The decidable check `tablesMatchGrammar`
-(certified per example by kernel `decide`/`rfl`) compares the production data
-the verified bridges consume — jump-table fields *and* plain arrays — against
-your `Grammar0`, with every index in range, so the `Fin` padding never clamps
-and the dummy symbols stay unreachable. This proposition is what ties
-`ParseTree G` in the theorems above to the grammar a human reviews.
-
-Wraps `Gen.tablesMatchGrammar_spec` (no Coq counterpart; leak-2 fix). See also
-the faithfulness lemmas `TablesMatchGrammar.prodLhsOf_val`,
-`TablesMatchGrammar.prodRhsRevOf_eq`, `TablesMatchGrammar.startNt_val`. -/
-theorem tables_grammar_faithful {t : Gen.GenTables} {g : Gen.Grammar0}
-    (h : Gen.tablesMatchGrammar t g = true) : Gen.TablesMatchGrammar t g :=
-  Gen.tablesMatchGrammar_spec h
+No theorem is needed here anymore — it holds **by construction** (D9): for
+generated parsers, the grammar `G` above is `grammar.toGrammar(Typed) lk …`,
+a definitional function of the `Grammar0` you wrote; the tables supply only the
+untrusted automaton half, and the production lookups `lk : ProdLookup grammar`
+carry intrinsic agreement proofs. On top,
+`Gen.Grammar0.toGrammar_derives_iff` (and `…Typed…`) proves `G`'s *language*
+equal to the 15-line textbook relation `Grammar0.Derives` on terminal strings —
+see `Examples/MiniCalc.lean`'s `mini_language_eq` / `mini_accepts` for the
+end-to-end shape. -/
 
 /-! ## Axiom guards (build-enforced)
 
@@ -313,9 +302,6 @@ failure. -/
 
 /-- info: 'LeanMenhir.Guarantees.runtime_consumes_exactly' depends on axioms: [propext, Quot.sound] -/
 #guard_msgs in #print axioms runtime_consumes_exactly
-
-/-- info: 'LeanMenhir.Guarantees.tables_grammar_faithful' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in #print axioms tables_grammar_faithful
 
 end Guarantees
 end LeanMenhir

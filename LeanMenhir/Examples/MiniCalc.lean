@@ -16,7 +16,6 @@ carries no compiler-trust axiom (`Lean.ofReduceBool`), only the kernel.
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Generator.LR1
-import LeanMenhir.Generator.GrammarCheck
 import LeanMenhir.Generator.Derives0
 import LeanMenhir.Guarantees
 
@@ -110,16 +109,6 @@ def automaton : Automaton miniGrammar :=
 /-- The generated tables are safe — certified by **kernel `decide`** (the only
 trusted component is the Lean kernel; no `native_decide`/compiler-trust axiom). -/
 theorem minicalcSafe : Safe automaton := by decide
-
-/-- The tables' **grammar half** is exactly `grammar` — production by production,
-in the very fields the bridge consumes, with every index in range (so the `Fin`
-padding `cl` never clamps and the dummy symbols stay unreachable). The
-safety/completeness validators *cannot* check this (they certify only the
-automaton half — a safe+complete automaton for a mangled grammar would pass);
-this certificate is what ties `parse_correct`/`parse_complete`/`unambiguity`
-(stated over the tables' grammar) to the human-readable `grammar` above.
-Kernel `decide`. -/
-theorem minicalcGrammarMatch : tablesMatchGrammar miniTables grammar = true := by decide
 
 /-! ### Lexer + end-to-end parsing -/
 

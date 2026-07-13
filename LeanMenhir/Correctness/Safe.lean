@@ -9,8 +9,8 @@ The safety validator: definitions of the automaton invariants (`shiftHeadSymbs`,
 `isSafe` (a.k.a. `Safe.check`), and `Safe.of_check : isSafe A = true → Safe A`. Soundness of the
 interpreter holds whenever this validator accepts the tables.
 -/
-import LeanMenhir.Automaton
-import LeanMenhir.Validator.Classes
+import LeanMenhir.Machine.Automaton
+import LeanMenhir.Correctness.Classes
 
 namespace LeanMenhir
 

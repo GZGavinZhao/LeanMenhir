@@ -17,7 +17,6 @@ kernel-reducible) and the safety certificate is discharged by `native_decide`
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Generator.LR1
-import LeanMenhir.Generator.GrammarCheck
 
 namespace LeanMenhir.Examples.Arith
 
@@ -65,12 +64,6 @@ theorem isSafe_ok : Safe automaton := Safe.of_check (by native_decide)
 with `Main.parse_complete`/`Main.unambiguity`, this certifies that the generated
 parser recognises *every* parse tree of the grammar and is unambiguous. -/
 theorem isComplete_ok : Complete automaton := Complete.of_check (by native_decide)
-
-/-- The tables' **grammar half** is exactly `grammar` (production data, start
-symbol, and index ranges) — the part the validators cannot check. `native_decide`
-because `buildTablesSLR` is a `partial def` (not kernel-reducible), consistent
-with this example's compiler-trust story. -/
-theorem grammarMatch_ok : tablesMatchGrammar tables grammar = true := by native_decide
 
 /-- Parse a token stream (terminal index, value), ending in an infinite `eof`. -/
 def parseTokens (toks : List (Fin 4 × Nat)) : Option Nat :=

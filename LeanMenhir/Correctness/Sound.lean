@@ -7,7 +7,7 @@ This Lean port is a derivative work, distributed under LGPL-3.0-or-later.
 Soundness of the interpreter: if a parse succeeds and returns a semantic value,
 then the input word really has a parse tree with that semantic value.
 -/
-import LeanMenhir.Interpreter
+import LeanMenhir.Machine.Interpreter
 
 
 namespace LeanMenhir

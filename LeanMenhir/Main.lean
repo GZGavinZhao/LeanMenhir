@@ -8,10 +8,10 @@ The user-facing entry points: the boolean validators, the runnable `parse`, the
 soundness theorem, and (given the completeness validator accepts) the
 completeness and unambiguity theorems.
 -/
-import LeanMenhir.Interpreter.Correct
-import LeanMenhir.Interpreter.Complete
-import LeanMenhir.Interpreter.Congr
-import LeanMenhir.Anchored
+import LeanMenhir.Correctness.Sound
+import LeanMenhir.Correctness.CompleteProof
+import LeanMenhir.Correctness.Congr
+import LeanMenhir.Correctness.Anchored
 
 namespace LeanMenhir
 namespace Main
