@@ -17,6 +17,8 @@ LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
 import LeanMenhir.Generator.LR1
 import LeanMenhir.Generator.GrammarCheck
+import LeanMenhir.Generator.Derives0
+import LeanMenhir.Guarantees
 
 namespace LeanMenhir.Examples.MiniCalc
 
@@ -107,7 +109,7 @@ def automaton : Automaton miniGrammar :=
 
 /-- The generated tables are safe — certified by **kernel `decide`** (the only
 trusted component is the Lean kernel; no `native_decide`/compiler-trust axiom). -/
-theorem minicalcSafe : Main.safeValidator automaton = true := by decide
+theorem minicalcSafe : Safe automaton := Safe.of_check (by decide)
 
 /-- The tables' **grammar half** is exactly `grammar` — production by production,
 in the very fields the bridge consumes, with every index in range (so the `Fin`
@@ -207,7 +209,7 @@ is unambiguous (any two trees of a word have the same AST). -/
 
 /-- The **completeness** validator accepts the generated tables — certified by
 **kernel `decide`** (no `native_decide`/compiler-trust axiom). -/
-theorem minicalcComplete : Main.completeValidator automaton = true := by decide
+theorem minicalcComplete : Complete automaton := Complete.of_check (by decide)
 
 /-- Every parse `tree`, given enough fuel, is parsed to its own AST, consuming
 exactly `word`. -/
@@ -223,6 +225,35 @@ theorem mini_parses (logNSteps : Nat) (word : List miniGrammar.Token)
   | Parsed sem buff => rw [hp] at H; obtain ⟨h1, h2, _⟩ := H; rw [h1, h2]
   | Timeout => rw [hp] at H; omega
   | Fail s t => rw [hp] at H; exact H.elim
+
+/-! ### The theorems are about `grammar : Grammar0` — literally
+
+With D9 (the grammar is a definitional function of `grammar`) and D7′ (the
+textbook `Grammar0.Derives` + transport), the guarantees can be phrased with a
+membership hypothesis a CFG-literate reader can audit against `grammar` alone. -/
+
+/-- Well-formedness of the MiniCalc `Grammar0` (all indices in range) — kernel
+`decide`. -/
+theorem miniWF : grammar.WF := Grammar0.WF.of_check (by decide)
+
+/-- **The verified language is the textbook language of `grammar`**: a token
+word is in the parser's language iff its terminal-index string `Derives` — in
+the 15-line, plain-`Nat` sense of `Grammar0.Derives` — from `grammar.start`. -/
+theorem mini_language_eq (word : List miniGrammar.Token) :
+    word ∈ miniGrammar.language (automaton.start_nt (0 : Fin 1)) ↔
+      grammar.Derives (.nonterm grammar.start) (word.map fun tok => tok.1.val) :=
+  Grammar0.toGrammar_derives_iff grammar miniWF miniLk Expr actions miniWF.start_lt word
+
+/-- **Completeness against YOUR grammar**: any token word whose terminal string
+derives (textbook sense) from `grammar.start` is accepted, given enough fuel. -/
+theorem mini_accepts (word : List miniGrammar.Token)
+    (hmem : grammar.Derives (.nonterm grammar.start) (word.map fun tok => tok.1.val))
+    (bufferEnd : Buffer miniGrammar) :
+    ∃ fuel₀, ∀ fuel, fuel₀ ≤ fuel →
+      ∃ sem, Main.parse (A := automaton) (0 : Fin 1) minicalcSafe fuel
+        (word ++ₛ bufferEnd) = .Parsed sem bufferEnd :=
+  Guarantees.parser_accepts (0 : Fin 1) minicalcSafe minicalcComplete
+    ((mini_language_eq word).mpr hmem) bufferEnd
 
 /-- **Unambiguity**: any two parse trees of the same word have equal AST. -/
 theorem mini_unambiguous (word : List miniGrammar.Token)

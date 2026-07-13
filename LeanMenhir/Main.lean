@@ -20,56 +20,46 @@ open LeanMenhir.Buf
 
 variable {G : Grammar} {A : Automaton G}
 
-/-- The safety validator: `safeValidator A = true` is the precondition discharged
-(by `decide`/`native_decide`) for a concrete automaton (Coq `safe_validator`;
-the Coq `unit` thunk argument is dropped — the automaton is the argument). -/
-def safeValidator (A : Automaton G) : Bool := isSafe A
-
-/-- The runnable parser: given a machine-checked proof that the safety validator
-accepts the tables, parse `buffer` with budget `2 ^ logNSteps` (Coq `Main.parse`). -/
-def parse (init : A.InitState) (hsafe : safeValidator A = true) (logNSteps : Nat)
+/-- The runnable parser: given the safety invariant (`Safe A`, discharged by
+`Safe.of_check (by decide)` for a concrete automaton), parse `buffer` with
+budget `2 ^ logNSteps` (Coq `Main.parse`, minus the boolean-reflection detour). -/
+def parse (init : A.InitState) (hsafe : Safe A) (logNSteps : Nat)
     (buffer : Buffer G) : ParseResult A (G.symbol_semantic_type (.NT (A.start_nt init))) :=
-  LeanMenhir.parse init (safe_is_validator hsafe) buffer logNSteps
+  LeanMenhir.parse init hsafe buffer logNSteps
 
 /-- **Soundness** (Coq `Main.parse_correct`): a successful parse returns a real
 parse tree of the recognised word with the produced semantic value. -/
-theorem parse_correct (init : A.InitState) (hsafe : safeValidator A = true)
+theorem parse_correct (init : A.InitState) (hsafe : Safe A)
     (logNSteps : Nat) (buffer : Buffer G) :
     match parse init hsafe logNSteps buffer with
     | .Parsed sem bufferNew =>
         ∃ (word : List G.Token) (pt : ParseTree G (.NT (A.start_nt init)) word),
           buffer.get = (word ++ₛ bufferNew).get ∧ ptSem pt = sem
     | _ => True :=
-  LeanMenhir.parse_correct init (safe_is_validator hsafe) buffer logNSteps
-
-/-- The completeness validator: `completeValidator A = true` is discharged (by
-`decide`/`native_decide`) for a concrete automaton (Coq `complete_validator`;
-Coq `unit` thunk dropped). -/
-def completeValidator (A : Automaton G) : Bool := isComplete A
+  LeanMenhir.parse_correct init hsafe buffer logNSteps
 
 /-- **Completeness** (Coq `Main.parse_complete`): if the completeness validator
 accepts the tables, then for *every* parse tree of `word`, parsing `word`
 (followed by any `bufferEnd`) with budget `2 ^ logNSteps` returns that tree's
 semantics, consumes exactly `word`, and `pt_size tree ≤ 2 ^ logNSteps`; with too
 little fuel it times out, and it never fails. -/
-theorem parse_complete (init : A.InitState) (hsafe : safeValidator A = true)
-    (hcomplete : completeValidator A = true) (logNSteps : Nat) (word : List G.Token)
+theorem parse_complete (init : A.InitState) (hsafe : Safe A)
+    (hcomplete : Complete A) (logNSteps : Nat) (word : List G.Token)
     (bufferEnd : Buffer G) (tree : ParseTree G (.NT (A.start_nt init)) word) :
     match parse init hsafe logNSteps (word ++ₛ bufferEnd) with
     | .Parsed sem buff =>
         sem = ptSem tree ∧ buff = bufferEnd ∧ ptSize tree ≤ 2 ^ logNSteps
     | .Timeout => 2 ^ logNSteps < ptSize tree
     | .Fail _ _ => False :=
-  LeanMenhir.parse_complete init word bufferEnd (safe_is_validator hsafe)
-    (complete_is_validator hcomplete) tree logNSteps
+  LeanMenhir.parse_complete init word bufferEnd hsafe hcomplete tree logNSteps
 
 /-- **Completeness, extensionally** : `parse_complete` for *any* input buffer
 that denotes the same token stream as `word ++ₛ bufferEnd` — in particular the
 array-backed buffers built by `Buf.ofListEof` that the runtime driver executes
 (via `parse_congr`, since the parser observes the buffer only through
 `head`/`tail`). The residual buffer is pinned up to denotation. -/
-theorem parse_complete_ext (init : A.InitState) (hsafe : safeValidator A = true)
-    (hcomplete : completeValidator A = true) (logNSteps : Nat) (word : List G.Token)
+theorem parse_complete_ext (init : A.InitState) (hsafe : Safe A)
+    (hcomplete : Complete A) (logNSteps : Nat) (word : List G.Token)
     (bufferEnd : Buffer G) (buffer : Buffer G) (hbuf : buffer.get = (word ++ₛ bufferEnd).get)
     (tree : ParseTree G (.NT (A.start_nt init)) word) :
     match parse init hsafe logNSteps buffer with
@@ -80,7 +70,7 @@ theorem parse_complete_ext (init : A.InitState) (hsafe : safeValidator A = true)
   have Hc := parse_complete init hsafe hcomplete logNSteps word bufferEnd tree
   have Hcg : ParseResult.BufEquiv (parse init hsafe logNSteps buffer)
       (parse init hsafe logNSteps (word ++ₛ bufferEnd)) :=
-    parse_congr init (safe_is_validator hsafe) hbuf logNSteps
+    parse_congr init hsafe hbuf logNSteps
   cases hp : parse init hsafe logNSteps buffer with
   | Fail st tok =>
     rw [hp] at Hcg
@@ -112,7 +102,7 @@ lexer never emits the EOF terminal, then a successful parse of the padded input
 input, anchored at EOF, no trailing garbage — and returned the semantics of one
 of its parse trees. This upgrades `parse_correct`'s "some prefix of the padded
 stream was recognised" to what a user actually expects of a parser. -/
-theorem parse_correct_anchored (init : A.InitState) (hsafe : safeValidator A = true)
+theorem parse_correct_anchored (init : A.InitState) (hsafe : Safe A)
     (logNSteps : Nat) (toks : List G.Token) (eofTok : G.Token)
     (hanch : EofAnchored (G.token_term eofTok) (A.start_nt init))
     (hlex : ∀ tok ∈ toks, G.token_term tok ≠ G.token_term eofTok)
@@ -140,7 +130,7 @@ theorem parse_correct_anchored (init : A.InitState) (hsafe : safeValidator A = t
 /-- **Unambiguity** (Coq `Main.unambiguity`): if both validators accept and the
 token type is inhabited, any two parse trees of the same word have the same
 semantic value. -/
-theorem unambiguity (hsafe : safeValidator A = true) (hcomplete : completeValidator A = true)
+theorem unambiguity (hsafe : Safe A) (hcomplete : Complete A)
     (tok : G.Token) (init : A.InitState) (word : List G.Token)
     (tree1 tree2 : ParseTree G (.NT (A.start_nt init)) word) :
     ptSem tree1 = ptSem tree2 := by

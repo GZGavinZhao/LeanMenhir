@@ -120,7 +120,7 @@ theorem reduceStep_sound (stk : Stack A) (prod : G.Production)
     trivial
 
 /-- `step` is sound (Coq `step_invariant`). -/
-theorem step_sound (hsafe : safe A) (stk : Stack A) (word : List G.Token) (buffer : Buffer G)
+theorem step_sound (hsafe : Safe A) (stk : Stack A) (word : List G.Token) (buffer : Buffer G)
     (Hi : StackInvariant init stk) (hword : WordHasStackSemantics word stk) :
     match step init hsafe stk buffer Hi with
     | .Accept sem bufferNew =>
@@ -197,7 +197,7 @@ theorem step_sound (hsafe : safe A) (stk : Stack A) (word : List G.Token) (buffe
     trivial
 
 /-- The parse loop is sound (Coq `parse_fix_invariant`). -/
-theorem parseFix_sound (hsafe : safe A) (stk : Stack A) (word : List G.Token) (buffer : Buffer G)
+theorem parseFix_sound (hsafe : Safe A) (stk : Stack A) (word : List G.Token) (buffer : Buffer G)
     (logNSteps : Nat) (Hi : StackInvariant init stk) (hword : WordHasStackSemantics word stk) :
     match (parseFix init hsafe stk buffer logNSteps Hi).1 with
     | .Accept sem bufferNew =>
@@ -231,7 +231,7 @@ theorem parseFix_sound (hsafe : safe A) (stk : Stack A) (word : List G.Token) (b
 /-- **Soundness.** If the parser returns `Parsed sem buffer'`, the consumed input
 `word ++ buffer'` has a parse tree of head `start_nt init` with semantics `sem`
 (Coq `parse_correct`). -/
-theorem parse_correct (hsafe : safe A) (buffer : Buffer G) (logNSteps : Nat) :
+theorem parse_correct (hsafe : Safe A) (buffer : Buffer G) (logNSteps : Nat) :
     match parse init hsafe buffer logNSteps with
     | .Parsed sem bufferNew =>
         ∃ (word : List G.Token) (pt : ParseTree G (.NT (A.start_nt init)) word),

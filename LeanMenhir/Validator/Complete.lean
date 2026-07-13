@@ -8,7 +8,7 @@ The completeness validator: definitions of the automaton invariants needed for
 completeness (`nullableStable`, `firstStable`, `startFuture`, `terminalShift`,
 `endReduce`, `nonTerminalGoto`, `startGoto`, `nonTerminalClosed`, bundled as
 `complete`), the boolean validator `isComplete`, and the proof that
-`isComplete A = true → complete A`. Completeness of the interpreter holds whenever
+`isComplete A = true → Complete A` (`Complete.of_check`). Completeness of the interpreter holds whenever
 this validator accepts the tables.
 
 Unlike the Coq version, which uses `Derive` to synthesise the validator from an
@@ -162,19 +162,36 @@ def nonTerminalClosed (A : Automaton G) : Prop :=
           lookahead2 ∈ firstWordSet A q → stateHasFuture s1 p (futureOfProd p 0) lookahead2)
     | _ => True
 
-/-- The automaton is complete (Coq `complete`). -/
-def complete (A : Automaton G) : Prop :=
-  nullableStable A ∧ firstStable A ∧ startFuture A ∧ terminalShift A
-  ∧ endReduce A ∧ nonTerminalGoto A ∧ startGoto A ∧ nonTerminalClosed A
+/-- **The completeness invariant** of an automaton (Coq `complete`, as a
+structure with named fields): the item-theoretic conditions under which the
+parser finds *every* derivation of the grammar. Decidable via the boolean
+validator `Complete.check` (`Complete.of_check`). -/
+structure Complete (A : Automaton G) : Prop where
+  /-- The `nullable` annotation is a fixpoint. -/
+  nullableStable : LeanMenhir.nullableStable A
+  /-- The `first` annotation is a fixpoint. -/
+  firstStable : LeanMenhir.firstStable A
+  /-- The initial states carry all `S → .u` items. -/
+  startFuture : LeanMenhir.startFuture A
+  /-- Items step through terminals via shift actions. -/
+  terminalShift : LeanMenhir.terminalShift A
+  /-- Finished items reduce (by default or on their lookahead). -/
+  endReduce : LeanMenhir.endReduce A
+  /-- Items step through nonterminals via the goto table. -/
+  nonTerminalGoto : LeanMenhir.nonTerminalGoto A
+  /-- No goto on a start nonterminal from its own initial state. -/
+  startGoto : LeanMenhir.startGoto A
+  /-- Item sets are closed under production expansion. -/
+  nonTerminalClosed : LeanMenhir.nonTerminalClosed A
 
-theorem nullableStable_of_complete (h : complete A) : nullableStable A := h.1
-theorem firstStable_of_complete (h : complete A) : firstStable A := h.2.1
-theorem startFuture_of_complete (h : complete A) : startFuture A := h.2.2.1
-theorem terminalShift_of_complete (h : complete A) : terminalShift A := h.2.2.2.1
-theorem endReduce_of_complete (h : complete A) : endReduce A := h.2.2.2.2.1
-theorem nonTerminalGoto_of_complete (h : complete A) : nonTerminalGoto A := h.2.2.2.2.2.1
-theorem startGoto_of_complete (h : complete A) : startGoto A := h.2.2.2.2.2.2.1
-theorem nonTerminalClosed_of_complete (h : complete A) : nonTerminalClosed A := h.2.2.2.2.2.2.2
+theorem nullableStable_of_complete (h : Complete A) : nullableStable A := h.nullableStable
+theorem firstStable_of_complete (h : Complete A) : firstStable A := h.firstStable
+theorem startFuture_of_complete (h : Complete A) : startFuture A := h.startFuture
+theorem terminalShift_of_complete (h : Complete A) : terminalShift A := h.terminalShift
+theorem endReduce_of_complete (h : Complete A) : endReduce A := h.endReduce
+theorem nonTerminalGoto_of_complete (h : Complete A) : nonTerminalGoto A := h.nonTerminalGoto
+theorem startGoto_of_complete (h : Complete A) : startGoto A := h.startGoto
+theorem nonTerminalClosed_of_complete (h : Complete A) : nonTerminalClosed A := h.nonTerminalClosed
 
 /-! ### Helper lemmas -/
 
@@ -468,12 +485,20 @@ def isComplete (A : Automaton G) : Bool :=
 
 /-- The validator is correct: if `isComplete A = true`, the automaton is
 `complete` (Coq `complete_is_validator`). -/
-theorem complete_is_validator : isComplete A = true → complete A := by
+theorem complete_is_validator : isComplete A = true → Complete A := by
   intro h
   simp only [isComplete, Bool.and_eq_true] at h
   obtain ⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩, h8⟩ := h
   exact ⟨isNullableStable_correct h1, isFirstStable_correct h2, isStartFuture_correct h3,
     isTerminalShift_correct h4, isEndReduce_correct h5, isNonTerminalGoto_correct h6,
     isStartGoto_correct h7, isNonTerminalClosed_correct h8⟩
+
+/-- The decision procedure for `Complete`: the boolean validator. -/
+abbrev Complete.check (A : Automaton G) : Bool := isComplete A
+
+/-- Certified constructor: discharge `Complete A` by `Complete.of_check
+(by decide)` / `(by rfl)` / `(by native_decide)`. -/
+theorem Complete.of_check {A : Automaton G} (h : isComplete A = true) : Complete A :=
+  complete_is_validator h
 
 end LeanMenhir

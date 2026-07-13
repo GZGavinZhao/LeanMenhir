@@ -59,12 +59,12 @@ def automaton : Automaton arithGrammar :=
   automatonOfG0Tables grammar arithLk Nat actions tables
 
 /-- The safety validator accepts the generated tables — checked by computation. -/
-theorem isSafe_ok : Main.safeValidator automaton = true := by native_decide
+theorem isSafe_ok : Safe automaton := Safe.of_check (by native_decide)
 
 /-- The **completeness** validator also accepts the generated tables. Combined
 with `Main.parse_complete`/`Main.unambiguity`, this certifies that the generated
 parser recognises *every* parse tree of the grammar and is unambiguous. -/
-theorem isComplete_ok : Main.completeValidator automaton = true := by native_decide
+theorem isComplete_ok : Complete automaton := Complete.of_check (by native_decide)
 
 /-- The tables' **grammar half** is exactly `grammar` (production data, start
 symbol, and index ranges) — the part the validators cannot check. `native_decide`

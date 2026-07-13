@@ -118,10 +118,10 @@ def automaton : Automaton scaleGrammar :=
 
 /-- Safety — kernel `rfl` (BTree-backed tables: `O(log)` lookups in the
 validator, with no compiler-trust axiom). -/
-theorem scaleSafe : Main.safeValidator automaton = true := by rfl
+theorem scaleSafe : Safe automaton := Safe.of_check (by rfl)
 
 /-- Completeness — kernel `rfl` (BTree-backed tables). -/
-theorem scaleComplete : Main.completeValidator automaton = true := by rfl
+theorem scaleComplete : Complete automaton := Complete.of_check (by rfl)
 
 /-- The tables' **grammar half** is exactly `grammar` — the part the validators
 cannot check. Subsumes the earlier ad-hoc jump-table-vs-array agreement spot

@@ -61,7 +61,7 @@ abbrev ResultType {G : Grammar} (A : Automaton G) (init : A.InitState) : Type :=
 with the infinite `eof` filler, and project the `ParseResult` into `Except E`.
 `onFail`/`onTimeout` build the caller's error type from the failure cases. -/
 def parseList {E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (init : A.InitState) (hsafe : Safe A)
     (eof : G.Token) (toks : List G.Token)
     (onFail : A.State → G.Token → E) (onTimeout : E) :
     Except E (ResultType A init) :=
@@ -74,7 +74,7 @@ def parseList {E : Type}
 e.g. an unlexable token), then `parseList`. The external token type `Tok` is
 whatever the lexer produces (e.g. BNFC's `Token`). -/
 def parseWith {Tok E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (init : A.InitState) (hsafe : Safe A)
     (eof : G.Token) (adapt : Tok → Except E G.Token)
     (onFail : A.State → G.Token → E) (onTimeout : E)
     (input : List Tok) :
@@ -97,8 +97,8 @@ array-backed `Buf.ofListEof toks eof`; the two are connected by the interpreter
 extensionality bridge (`parse_congr`), since both denote the same token stream
 `toks ++ eof^ω`. -/
 theorem parseList_complete {E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator A = true)
-    (hcomplete : Main.completeValidator A = true)
+    (init : A.InitState) (hsafe : Safe A)
+    (hcomplete : Complete A)
     (eof : G.Token) (toks : List G.Token)
     (onFail : A.State → G.Token → E) (onTimeout : E) (k : Nat)
     (tree : ParseTree G (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
@@ -121,8 +121,8 @@ realisability: any parse tree with at most `2⁶⁴` nodes — i.e. *any tree th
 can actually be constructed* — is found by the driver. What remains is exactly
 the mathematical content: the word `toks ++ eofᵏ` must be derivable. -/
 theorem parseList_complete_sized {E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator A = true)
-    (hcomplete : Main.completeValidator A = true)
+    (init : A.InitState) (hsafe : Safe A)
+    (hcomplete : Complete A)
     (eof : G.Token) (toks : List G.Token)
     (onFail : A.State → G.Token → E) (onTimeout : E) (k : Nat)
     (tree : ParseTree G (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
@@ -139,7 +139,7 @@ lexer never emits the EOF terminal, then `parseList` returning `.ok v` means the
 the anchoring hypothesis, success only certifies that *some prefix* of the
 padded stream was recognised (`Main.parse_correct`); this closes that gap. -/
 theorem parseList_sound_anchored {E : Type}
-    (init : A.InitState) (hsafe : Main.safeValidator A = true)
+    (init : A.InitState) (hsafe : Safe A)
     (eof : G.Token) (toks : List G.Token)
     (onFail : A.State → G.Token → E) (onTimeout : E)
     (hanch : EofAnchored (G.token_term eof) (A.start_nt init))

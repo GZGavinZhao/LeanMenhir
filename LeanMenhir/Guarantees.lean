@@ -34,9 +34,10 @@ Current caveats a reviewer must know (tracked in the idiomatic-refactor plan):
 * The theorems are stated over an `Automaton`, whose grammar is the embedded
   `A.toGrammar` (Coq heritage). The grammar/automaton split (refactor phase P1)
   will make the grammar a separate, explicit binder.
-* Hypotheses of the form `Main.safeValidator A = true` are boolean-reflection
-  certificates (Coq heritage); phase P2 replaces them with `Prop`s (`Safe A`,
-  `Complete A`) carrying named, documented content.
+* The validator hypotheses are the `Prop` structures `Safe A` / `Complete A`
+  (named, documented fields); per-automaton they are discharged by the tuned
+  boolean validators via `Safe.of_check (by decide)` etc. (genuine `Decidable`
+  instances arrive with phase P5's reflection converses).
 
 LGPL-3.0-or-later (derivative of coq-menhirlib).
 -/
@@ -66,7 +67,7 @@ consumed" needs EOF anchoring, see `parser_consumes_exactly`. Nothing is claimed
 about `.Fail`/`.Timeout` outcomes here; see `parser_never_rejects_valid`.
 
 Wraps `Main.parse_correct` (Coq `Main.parse_correct`). -/
-theorem parser_sound (init : A.InitState) (hsafe : Main.safeValidator A = true)
+theorem parser_sound (init : A.InitState) (hsafe : Safe A)
     (fuel : Nat) (buffer : Buffer G) {sem : G.symbol_semantic_type (.NT (A.start_nt init))}
     {rest : Buffer G}
     (h : Main.parse init hsafe fuel buffer = .Parsed sem rest) :
@@ -79,7 +80,7 @@ theorem parser_sound (init : A.InitState) (hsafe : Main.safeValidator A = true)
 /-- **Soundness, recognition face** — *if the parser accepts, the consumed
 prefix is a word of the language.* The membership-only corollary of
 `parser_sound` (the derivation is forgotten into `∈ language`). -/
-theorem parser_sound_mem (init : A.InitState) (hsafe : Main.safeValidator A = true)
+theorem parser_sound_mem (init : A.InitState) (hsafe : Safe A)
     (fuel : Nat) (buffer : Buffer G) {sem : G.symbol_semantic_type (.NT (A.start_nt init))}
     {rest : Buffer G}
     (h : Main.parse init hsafe fuel buffer = .Parsed sem rest) :
@@ -102,8 +103,8 @@ realisability (`runtime_complete`); for hand-picked fuel it is a real
 obligation.
 
 Wraps `Main.parse_complete` (Coq `Main.parse_complete`). -/
-theorem parser_complete (init : A.InitState) (hsafe : Main.safeValidator A = true)
-    (hcomplete : Main.completeValidator A = true)
+theorem parser_complete (init : A.InitState) (hsafe : Safe A)
+    (hcomplete : Complete A)
     (word : List G.Token) (bufferEnd : Buffer G)
     (tree : ParseTree G (.NT (A.start_nt init)) word)
     (fuel : Nat) (hfuel : ptSize tree ≤ 2 ^ fuel) :
@@ -126,8 +127,8 @@ back the untouched continuation. Membership alone cannot reveal the size of a
 derivation, hence the existential fuel threshold; `parser_complete` (the
 semantic face, of which this is a corollary) pins value and fuel exactly, and
 `runtime_complete` discharges the fuel up to physical realisability. -/
-theorem parser_accepts (init : A.InitState) (hsafe : Main.safeValidator A = true)
-    (hcomplete : Main.completeValidator A = true)
+theorem parser_accepts (init : A.InitState) (hsafe : Safe A)
+    (hcomplete : Complete A)
     {word : List G.Token} (hmem : word ∈ G.language (A.start_nt init))
     (bufferEnd : Buffer G) :
     ∃ fuel₀, ∀ fuel, fuel₀ ≤ fuel →
@@ -146,7 +147,7 @@ even with too little fuel (it answers `.Timeout` instead). Together with
 
 Wraps the `Fail → False` case of `Main.parse_complete`. -/
 theorem parser_never_rejects_valid (init : A.InitState)
-    (hsafe : Main.safeValidator A = true) (hcomplete : Main.completeValidator A = true)
+    (hsafe : Safe A) (hcomplete : Complete A)
     {word : List G.Token} (hmem : word ∈ G.language (A.start_nt init))
     (bufferEnd : Buffer G)
     (fuel : Nat) (st : A.State) (tok : G.Token) :
@@ -171,7 +172,7 @@ semantic values with the syntax trees themselves.
 Wraps `Main.unambiguity` (Coq `Main.unambiguity`; `[Nonempty G.Token]` is the
 honest rendering of Coq's `inhabited token` — the witness is proof-only). -/
 theorem grammar_unambiguous [Nonempty G.Token]
-    (hsafe : Main.safeValidator A = true) (hcomplete : Main.completeValidator A = true)
+    (hsafe : Safe A) (hcomplete : Complete A)
     (init : A.InitState) (word : List G.Token)
     (tree1 tree2 : ParseTree G (.NT (A.start_nt init)) word) :
     ptSem tree1 = ptSem tree2 := by
@@ -192,7 +193,7 @@ input `Buf.ofListEof toks eofTok` means the recognised word is **exactly**
 
 Wraps `Main.parse_correct_anchored` (no Coq counterpart; leak-3 fix). -/
 theorem parser_consumes_exactly (init : A.InitState)
-    (hsafe : Main.safeValidator A = true) (fuel : Nat)
+    (hsafe : Safe A) (fuel : Nat)
     (toks : List G.Token) (eofTok : G.Token)
     (hanch : EofAnchored (G.token_term eofTok) (A.start_nt init))
     (hlex : ∀ tok ∈ toks, G.token_term tok ≠ G.token_term eofTok)
@@ -215,7 +216,7 @@ distinguish denotationally equal buffers). -/
 the padded input stream derives from the start symbol with value `v`.
 (For "the whole input", see `runtime_consumes_exactly`.) -/
 theorem runtime_sound {E : Type} (init : A.InitState)
-    (hsafe : Main.safeValidator A = true) (eof : G.Token) (toks : List G.Token)
+    (hsafe : Safe A) (eof : G.Token) (toks : List G.Token)
     (onFail : A.State → G.Token → E) (onTimeout : E)
     {v : Runtime.ResultType A init}
     (h : Runtime.parseList init hsafe eof toks onFail onTimeout = .ok v) :
@@ -240,7 +241,7 @@ returns exactly its semantic value.
 
 Wraps `Runtime.parseList_complete_sized` (leak-1 + leak-4 fixes). -/
 theorem runtime_complete {E : Type} (init : A.InitState)
-    (hsafe : Main.safeValidator A = true) (hcomplete : Main.completeValidator A = true)
+    (hsafe : Safe A) (hcomplete : Complete A)
     (eof : G.Token) (toks : List G.Token)
     (onFail : A.State → G.Token → E) (onTimeout : E) (k : Nat)
     (tree : ParseTree G (.NT (A.start_nt init)) (toks ++ List.replicate k eof))
@@ -254,7 +255,7 @@ else) was parsed, with `v` the semantics of one of its derivations.
 
 Wraps `Runtime.parseList_sound_anchored` (leak-3 fix). -/
 theorem runtime_consumes_exactly {E : Type} (init : A.InitState)
-    (hsafe : Main.safeValidator A = true) (eof : G.Token) (toks : List G.Token)
+    (hsafe : Safe A) (eof : G.Token) (toks : List G.Token)
     (onFail : A.State → G.Token → E) (onTimeout : E)
     (hanch : EofAnchored (G.token_term eof) (A.start_nt init))
     (hlex : ∀ tok ∈ toks, G.token_term tok ≠ G.token_term eof)

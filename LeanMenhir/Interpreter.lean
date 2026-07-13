@@ -238,7 +238,7 @@ def reduceStep (stk : Stack A) (prod : G.Production) (buffer : Buffer G)
 
 /-- `reduceStep` preserves the stack invariant on `Progress`
 (Coq `reduce_step_stack_invariant_preserved`). -/
-theorem reduceStep_stack_invariant_preserved (hsafe : safe A) (stk : Stack A) (prod : G.Production)
+theorem reduceStep_stack_invariant_preserved (hsafe : Safe A) (stk : Stack A) (prod : G.Production)
     (buffer : Buffer G) (Hval : validForReduce (stateOfStack init stk) prod)
     (Hi : StackInvariant init stk) (stk' : Stack A) (buffer' : Buffer G) :
     reduceStep init stk prod buffer Hval Hi = .Progress stk' buffer' → StackInvariant init stk' := by
@@ -270,7 +270,7 @@ theorem reduceStep_stack_invariant_preserved (hsafe : safe A) (stk : Stack A) (p
 /-! ### `step` -/
 
 /-- One parsing step (Coq `step`). -/
-def step (hsafe : safe A) (stk : Stack A) (buffer : Buffer G) (Hi : StackInvariant init stk) :
+def step (hsafe : Safe A) (stk : Stack A) (buffer : Buffer G) (Hi : StackInvariant init stk) :
     StepResult init :=
   match haction : A.action_table (stateOfStack init stk) with
   | .Default_reduce_act prod =>
@@ -296,7 +296,7 @@ def step (hsafe : safe A) (stk : Stack A) (buffer : Buffer G) (Hi : StackInvaria
 
 /-- `step` preserves the stack invariant on `Progress`
 (Coq `step_stack_invariant_preserved`). -/
-theorem step_stack_invariant_preserved (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
+theorem step_stack_invariant_preserved (hsafe : Safe A) (stk : Stack A) (buffer : Buffer G)
     (Hi : StackInvariant init stk) (stk' : Stack A) (buffer' : Buffer G) :
     step init hsafe stk buffer Hi = .Progress stk' buffer' → StackInvariant init stk' := by
   intro heq
@@ -336,7 +336,7 @@ inductive ParseResult (A : Automaton G) (R : Type) where
   | Parsed : R → Buffer G → ParseResult A R
 
 /-- The parse loop, running `2 ^ logNSteps` steps (Coq `parse_fix`). -/
-def parseFix (hsafe : safe A) (stk : Stack A) (buffer : Buffer G) (logNSteps : Nat)
+def parseFix (hsafe : Safe A) (stk : Stack A) (buffer : Buffer G) (logNSteps : Nat)
     (Hi : StackInvariant init stk) :
     { sr : StepResult init // ∀ stk' buffer', sr = .Progress stk' buffer' → StackInvariant init stk' } :=
   match logNSteps with
@@ -348,7 +348,7 @@ def parseFix (hsafe : safe A) (stk : Stack A) (buffer : Buffer G) (logNSteps : N
       | ⟨sr, hsr⟩ => ⟨sr, hsr⟩
 
 /-- One unfolding of `parseFix` at a successor fuel (definitional). -/
-theorem parseFix_succ (hsafe : safe A) (stk : Stack A) (buffer : Buffer G) (n : Nat)
+theorem parseFix_succ (hsafe : Safe A) (stk : Stack A) (buffer : Buffer G) (n : Nat)
     (Hi : StackInvariant init stk) :
     parseFix init hsafe stk buffer (n + 1) Hi =
       match parseFix init hsafe stk buffer n Hi with
@@ -363,7 +363,7 @@ theorem initStackInvariant : StackInvariant init ([] : Stack A) := by
   · refine PrefixPred.cons _ _ (fun x => implb_self _) (PrefixPred.nil _)
 
 /-- Run the parser (Coq `parse`). -/
-def parse (hsafe : safe A) (buffer : Buffer G) (logNSteps : Nat) :
+def parse (hsafe : Safe A) (buffer : Buffer G) (logNSteps : Nat) :
     ParseResult A (G.symbol_semantic_type (.NT (A.start_nt init))) :=
   match (parseFix init hsafe [] buffer logNSteps (initStackInvariant init)).1 with
   | .Fail st tok => .Fail st tok

@@ -117,10 +117,10 @@ def automaton : Automaton stmGrammar :=
   Gen.automatonOfG0TablesTyped grammar stmLk ntType termType Unit actions stmTables
 
 /-- Safety — kernel `rfl` (BTree-backed tables; no compiler-trust axiom). -/
-theorem stmSafe : Main.safeValidator automaton = true := by rfl
+theorem stmSafe : Safe automaton := Safe.of_check (by rfl)
 
 /-- Completeness — kernel `rfl` (BTree-backed tables). -/
-theorem stmComplete : Main.completeValidator automaton = true := by rfl
+theorem stmComplete : Complete automaton := Complete.of_check (by rfl)
 
 /-- The tables' **grammar half** is exactly `grammar` — the part the validators
 cannot check (they certify only the automaton half). This ties the verified

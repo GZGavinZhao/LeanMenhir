@@ -51,9 +51,9 @@ grammar is the identity on all real data and the dummy padding symbols are
 unreachable. -/
 def wf (g0 : Grammar0) : Bool :=
   decide (g0.start < g0.numNonterm) &&
-  g0.prods.all fun p =>
+  g0.prods.toList.all fun p =>
     decide (p.1 < g0.numNonterm) &&
-    p.2.all fun s =>
+    p.2.toList.all fun s =>
       match s with
       | .term i => decide (i < g0.numTerm)
       | .nonterm i => decide (i < g0.numNonterm)

@@ -6,7 +6,7 @@ This Lean port is a derivative work, distributed under LGPL-3.0-or-later.
 
 The safety validator: definitions of the automaton invariants (`shiftHeadSymbs`,
 `gotoHeadSymbs`, …, `reduceOk`, bundled as `safe`), the boolean validator
-`isSafe`, and the proof that `isSafe A = true → safe A`. Soundness of the
+`isSafe` (a.k.a. `Safe.check`), and `Safe.of_check : isSafe A = true → Safe A`. Soundness of the
 interpreter holds whenever this validator accepts the tables.
 -/
 import LeanMenhir.Automaton
@@ -204,15 +204,27 @@ def reduceOk (A : Automaton G) : Prop :=
         | _ => True
     | .Default_reduce_act p => validForReduce s p
 
-/-- The automaton is safe (Coq `safe`). -/
-def safe (A : Automaton G) : Prop :=
-  shiftHeadSymbs A ∧ gotoHeadSymbs A ∧ shiftPastState A ∧ gotoPastState A ∧ reduceOk A
+/-- **The safety invariant** of an automaton (Coq `safe`, as a structure with
+named fields): everything the interpreter's stack discipline needs. `parse` is
+total and sound for any `Safe` automaton. Decidable via the tuned boolean
+validator `Safe.check` (`Safe.of_check`). -/
+structure Safe (A : Automaton G) : Prop where
+  /-- Shift targets extend the known stack-symbol suffix. -/
+  shiftHeadSymbs : LeanMenhir.shiftHeadSymbs A
+  /-- Goto targets extend the known stack-symbol suffix. -/
+  gotoHeadSymbs : LeanMenhir.gotoHeadSymbs A
+  /-- Shift targets refine the known stack-state predicates. -/
+  shiftPastState : LeanMenhir.shiftPastState A
+  /-- Goto targets refine the known stack-state predicates. -/
+  gotoPastState : LeanMenhir.gotoPastState A
+  /-- Every reduce action pops a well-formed RHS and its goto is defined. -/
+  reduceOk : LeanMenhir.reduceOk A
 
-theorem shiftHeadSymbs_of_safe (h : safe A) : shiftHeadSymbs A := h.1
-theorem gotoHeadSymbs_of_safe (h : safe A) : gotoHeadSymbs A := h.2.1
-theorem shiftPastState_of_safe (h : safe A) : shiftPastState A := h.2.2.1
-theorem gotoPastState_of_safe (h : safe A) : gotoPastState A := h.2.2.2.1
-theorem reduceOk_of_safe (h : safe A) : reduceOk A := h.2.2.2.2
+theorem shiftHeadSymbs_of_safe (h : Safe A) : shiftHeadSymbs A := h.shiftHeadSymbs
+theorem gotoHeadSymbs_of_safe (h : Safe A) : gotoHeadSymbs A := h.gotoHeadSymbs
+theorem shiftPastState_of_safe (h : Safe A) : shiftPastState A := h.shiftPastState
+theorem gotoPastState_of_safe (h : Safe A) : gotoPastState A := h.gotoPastState
+theorem reduceOk_of_safe (h : Safe A) : reduceOk A := h.reduceOk
 
 /-! ### The boolean validator -/
 
@@ -375,11 +387,21 @@ def isSafe (A : Automaton G) : Bool :=
 
 /-- The validator is correct: if `isSafe A = true`, the automaton is `safe`
 (Coq `safe_is_validator`). -/
-theorem safe_is_validator : isSafe A = true → safe A := by
+theorem safe_is_validator : isSafe A = true → Safe A := by
   intro h
   simp only [isSafe, Bool.and_eq_true] at h
   obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := h
   exact ⟨isShiftHeadSymbs_correct h1, isGotoHeadSymbs_correct h2,
     isShiftPastState_correct h3, isGotoPastState_correct h4, isReduceOk_correct h5⟩
+
+/-- The decision procedure for `Safe`: the hand-tuned boolean validator
+(incl. the `goto_enum` sparse iteration). -/
+abbrev Safe.check (A : Automaton G) : Bool := isSafe A
+
+/-- Certified constructor: discharge `Safe A` by `Safe.of_check (by decide)`
+(kernel `decide`), `(by rfl)` (BTree-backed tables), or `(by native_decide)`
+(compiler-trust, where the example opts in). -/
+theorem Safe.of_check {A : Automaton G} (h : isSafe A = true) : Safe A :=
+  safe_is_validator h
 
 end LeanMenhir

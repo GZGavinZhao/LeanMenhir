@@ -94,7 +94,7 @@ and the fail equation, completing the case analysis of `step`. -/
 
 /-- `step` shifts on a shift action, pushing the read head and dropping to the
 tail (general-buffer variant of `step_shift_eq`). -/
-theorem step_shift_eq' (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
+theorem step_shift_eq' (hsafe : Safe A) (stk : Stack A) (buffer : Buffer G)
     (Hi : StackInvariant init stk)
     (awt : (term : G.Terminal) → A.LookaheadAction term)
     (haction : A.action_table (stateOfStack init stk) = .Lookahead_act awt)
@@ -120,7 +120,7 @@ theorem step_shift_eq' (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
       rw [hawt] at hawt'; exact absurd hawt' (by simp)
 
 /-- `step` fails on a fail action, reporting the current state and head token. -/
-theorem step_fail_eq (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
+theorem step_fail_eq (hsafe : Safe A) (stk : Stack A) (buffer : Buffer G)
     (Hi : StackInvariant init stk)
     (awt : (term : G.Terminal) → A.LookaheadAction term)
     (haction : A.action_table (stateOfStack init stk) = .Lookahead_act awt)
@@ -144,7 +144,7 @@ theorem step_fail_eq (hsafe : safe A) (stk : Stack A) (buffer : Buffer G)
 
 /-- `step` on `cons b.head b.tail` behaves like `step` on `b` (η for the one
 head/tail observation `step` makes). -/
-theorem step_eta (hsafe : safe A) (stk : Stack A) (b : Buffer G) (Hi : StackInvariant init stk) :
+theorem step_eta (hsafe : Safe A) (stk : Stack A) (b : Buffer G) (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (step init hsafe stk (Buf.cons b.head b.tail) Hi)
       (step init hsafe stk b Hi) := by
   cases haction : A.action_table (stateOfStack init stk) with
@@ -174,7 +174,7 @@ theorem step_eta (hsafe : safe A) (stk : Stack A) (b : Buffer G) (Hi : StackInva
       exact ⟨rfl, rfl⟩
 
 /-- `step` congruence for buffers sharing the same (literal) head token. -/
-theorem step_cons_congr (hsafe : safe A) (stk : Stack A) (tok : G.Token) {r₁ r₂ : Buffer G}
+theorem step_cons_congr (hsafe : Safe A) (stk : Stack A) (tok : G.Token) {r₁ r₂ : Buffer G}
     (h : r₁.get = r₂.get) (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (step init hsafe stk (Buf.cons tok r₁) Hi)
       (step init hsafe stk (Buf.cons tok r₂) Hi) := by
@@ -208,7 +208,7 @@ theorem step_cons_congr (hsafe : safe A) (stk : Stack A) (tok : G.Token) {r₁ r
 
 /-- **`step` congruence**: denotationally equal buffers produce equivalent step
 results. -/
-theorem step_congr (hsafe : safe A) (stk : Stack A) {b₁ b₂ : Buffer G} (h : b₁.get = b₂.get)
+theorem step_congr (hsafe : Safe A) (stk : Stack A) {b₁ b₂ : Buffer G} (h : b₁.get = b₂.get)
     (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (step init hsafe stk b₁ Hi) (step init hsafe stk b₂ Hi) := by
   have hhead : b₁.head = b₂.head := congrFun h 0
@@ -225,7 +225,7 @@ theorem step_congr (hsafe : safe A) (stk : Stack A) {b₁ b₂ : Buffer G} (h : 
 
 /-- **`parseFix` congruence**: denotationally equal buffers produce equivalent
 results after any number of steps. -/
-theorem parseFix_congr (hsafe : safe A) (stk : Stack A) {b₁ b₂ : Buffer G} (h : b₁.get = b₂.get)
+theorem parseFix_congr (hsafe : Safe A) (stk : Stack A) {b₁ b₂ : Buffer G} (h : b₁.get = b₂.get)
     (logNSteps : Nat) (Hi : StackInvariant init stk) :
     StepResult.BufEquiv init (parseFix init hsafe stk b₁ logNSteps Hi).1
       (parseFix init hsafe stk b₂ logNSteps Hi).1 := by
@@ -260,7 +260,7 @@ theorem parseFix_congr (hsafe : safe A) (stk : Stack A) {b₁ b₂ : Buffer G} (
 /-- **`parse` congruence**: the parser cannot distinguish denotationally equal
 input buffers — same outcome, same semantic value, `get`-equal residual buffer.
 This is the extensionality bridge used by `Main.parse_complete_ext`. -/
-theorem parse_congr (hsafe : safe A) {b₁ b₂ : Buffer G} (h : b₁.get = b₂.get) (logNSteps : Nat) :
+theorem parse_congr (hsafe : Safe A) {b₁ b₂ : Buffer G} (h : b₁.get = b₂.get) (logNSteps : Nat) :
     ParseResult.BufEquiv (parse init hsafe b₁ logNSteps) (parse init hsafe b₂ logNSteps) := by
   have H := parseFix_congr init hsafe [] h logNSteps (initStackInvariant init)
   unfold parse
