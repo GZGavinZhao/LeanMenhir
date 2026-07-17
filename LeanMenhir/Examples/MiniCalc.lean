@@ -120,12 +120,12 @@ partial def lexAux : List Char → Option (List (Fin 10 × Expr))
   | c :: rest =>
     if c == ' ' || c == '\t' || c == '\n' then lexAux rest
     else if c.isDigit then
-      let digs := (c :: rest).takeWhile Char.isDigit
+      let (digs, tail) := (c :: rest).span Char.isDigit
       let n := digs.foldl (fun acc d => acc * 10 + (d.toNat - 48)) 0
-      (lexAux ((c :: rest).dropWhile Char.isDigit)).map (((7 : Fin 10), Expr.num n) :: ·)
+      (lexAux tail).map (((7 : Fin 10), Expr.num n) :: ·)
     else if c.isAlpha then
-      let ids := (c :: rest).takeWhile Char.isAlpha
-      (lexAux ((c :: rest).dropWhile Char.isAlpha)).map (((8 : Fin 10), Expr.var (String.ofList ids)) :: ·)
+      let (ids, tail) := (c :: rest).span Char.isAlpha
+      (lexAux tail).map (((8 : Fin 10), Expr.var (String.ofList ids)) :: ·)
     else
       let single (i : Fin 10) := (lexAux rest).map (((i, Expr.num 0)) :: ·)
       match c with

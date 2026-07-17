@@ -171,9 +171,9 @@ partial def lexAux : List Char → Position → List LToken → Except String (L
     if c == ' ' || c == '\t' || c == '\r' then lexAux rest { p with col := p.col + 1 } acc
     else if c == '\n' then lexAux rest { line := p.line + 1, col := 1 } acc
     else if c.isDigit then
-      let digs := (c :: rest).takeWhile Char.isDigit
+      let (digs, tail) := (c :: rest).span Char.isDigit
       let n : Int := Int.ofNat (digs.foldl (fun a d => a * 10 + (d.toNat - 48)) 0)
-      lexAux ((c :: rest).dropWhile Char.isDigit) { p with col := p.col + digs.length }
+      lexAux tail { p with col := p.col + digs.length }
         ({ kind := .intLit n, pos := p } :: acc)
     else
       let kw (s : String) :=

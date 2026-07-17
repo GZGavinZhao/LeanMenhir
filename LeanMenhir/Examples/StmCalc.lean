@@ -134,9 +134,9 @@ partial def lexAux : List Char → Option (List Tok)
   | c :: rest =>
     if c == ' ' || c == '\t' || c == '\n' then lexAux rest
     else if c.isDigit then
-      let digs := (c :: rest).takeWhile Char.isDigit
+      let (digs, tail) := (c :: rest).span Char.isDigit
       let n : Nat := digs.foldl (fun acc d => acc * 10 + (d.toNat - 48)) 0
-      (lexAux ((c :: rest).dropWhile Char.isDigit)).map ((((), ⟨5, n⟩) : Tok) :: ·)
+      (lexAux tail).map ((((), ⟨5, n⟩) : Tok) :: ·)
     else
       let single (i : Fin (stmTables.numTerm + 1)) (_h : termType i = Unit) :=
         (lexAux rest).map ((((), ⟨i, by rw [_h]; exact ()⟩) : Tok) :: ·)
