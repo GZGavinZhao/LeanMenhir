@@ -5,8 +5,9 @@ A grammar with *more than ~15 productions* (here 21) exercises two things that
 small examples (`CalcTemplate`, `StmCalc`) do not:
 
 1. **Per-arm elaboration cost.** The dependent `actions` dispatcher reduces
-   `prodLhsOf tables i` / `prodRhsRevOf tables i` once per arm. Backed by plain
-   `Array.getD` these reductions are `O(i)` (the kernel walks the backing `List`),
+   the production lookups (`lk.lhsFn i` / `lk.rhsRevFn i`) once per arm. Backed
+   by plain `Array.getD` these reductions are `O(i)` (the kernel walks the
+   backing `List`),
    giving `O(numProd²)` total work and large retained intermediate state — which
    made BNFC-sized grammars (e.g. L0, 256 productions) OOM. `build_tables%` now
    compiles those lookups into balanced decision trees (`prodLhsFn`/`prodRhsRevFn`),

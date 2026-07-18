@@ -265,11 +265,10 @@ theorem mem_allPairs {S NT : Type} [Enumerable S] [Enumerable NT] (s : S) (nt : 
     (s, nt) ∈ allPairs (S := S) (NT := NT) :=
   List.mem_flatMap.2 ⟨s, allList_complete s, List.mem_map.2 ⟨nt, allList_complete nt, rfl⟩⟩
 
-/- The pre-D9 bridges (`grammarOfTables*`, `automatonOfTables*`,
-`prodLhsOf`/`prodRhsRevOf`/`symTypeOf`) that reconstructed the *grammar half*
-from the untrusted tables were deleted in refactor phase P7b: the grammar is
-now always a definitional function of `Grammar0`
-(see `Generator/Grammar0.lean`). -/
+/- Note: the *grammar* half of a verified `Grammar` is never reconstructed from
+the untrusted tables — it is always a definitional function of the reviewed
+`Grammar0` (see `Generator/Grammar0.lean`). This file supplies only the
+untrusted *automaton* half and the shared decoding helpers. -/
 
 /-- Discharge the impossible "out-of-range production index" arm of a dependent
 `actions` dispatcher.

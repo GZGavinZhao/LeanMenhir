@@ -12,10 +12,10 @@ tooling — a bug there can make a build fail, never make a theorem lie.
 
 | # | File | What to check | Defines |
 |---|------|----------------|---------|
-| 1 | `LeanMenhir/Spec/Grammar.lean` | `Grammar`, `Symbol`, `ParseTree`, `ptSem`, `ptSize`. A `ParseTree (.NT n) w` is a derivation of the token word `w` from nonterminal `n`; `ptSem` folds the semantic actions over it. Note the RHS-reversed convention (`prod_rhs_rev`) and that a `ParseTreeList`'s word is the concatenation in *grammar* order. Then `LeanMenhir/Spec/Language.lean` (30 lines): the propositional form — `Derives nt w := Nonempty (ParseTree (.NT nt) w)` and `w ∈ language nt` — i.e. **membership in the language is the existence of a derivation**. | **"the language"** |
+| 1 | `LeanMenhir/Spec/Grammar.lean` | `Grammar`, `Symbol`, `ParseTree`, `ptSem`, `ptSize`. A `ParseTree (.NT n) w` is a derivation of the token word `w` from nonterminal `n`; `ptSem` folds the semantic actions over it. Note the RHS-reversed convention (`prod_rhs_rev`) and that a `ParseTreeList`'s word is the concatenation in *grammar* order. Then `LeanMenhir/Spec/Language.lean` (60 lines): the propositional form — `Derives nt w := Nonempty (ParseTree (.NT nt) w)` and `w ∈ language nt` — i.e. **membership in the language is the existence of a derivation**. | **"the language"** |
 | 2 | `LeanMenhir/Spec/Buffer.lean` | `Buf` with `head`/`tail`/`cons`/`appendList` and the denotation `get : Buf α → Nat → α`. All statements compare buffers by `get` (the token stream they denote). | **"the input"** |
 | 3 | `LeanMenhir/Machine/Interpreter.lean` | The signature and body of `parse` (fuelled LR driver; reads the input only via `head`/`tail`), and `ParseResult` (`Parsed`/`Timeout`/`Fail`). For applications, also `Runtime.parseList` (pads a finite token list with an EOF filler, projects into `Except`). | **"what runs"** |
-| 4 | `LeanMenhir/Guarantees.lean` | The nine end-to-end theorems, each with an informal reading, its caveats, and a build-enforced `#print axioms` guard. | **"what is guaranteed"** |
+| 4 | `LeanMenhir/Guarantees.lean` | The ten end-to-end theorems, each with an informal reading, its caveats, and a build-enforced `#print axioms` guard. | **"what is guaranteed"** |
 
 ## The guarantees, informally
 
@@ -36,7 +36,6 @@ proof-relevant form; the recognition faces are corollaries.
 | `grammar_unambiguous` | any two derivations of a word have equal **semantic value** (value-level; instantiate values with syntax trees for tree-level uniqueness) |
 | `parser_consumes_exactly` | EOF-anchored grammar + EOF-free lexer ⇒ acceptance means **the whole input and nothing else** was parsed (`toks ++ [eof] ∈ language …`) |
 | `runtime_sound` / `runtime_complete` / `runtime_consumes_exactly` | all of the above transferred to the *executed* driver `Runtime.parseList` (the parser cannot distinguish denotationally equal buffers — `parse_congr`) |
-| `tables_grammar_faithful` | (legacy table blobs) the tables' grammar half matches your `Grammar0` |
 | `Grammar0.toGrammar_derives_iff` (+ `Typed`) | **the parser's language is, provably, the textbook language of your `Grammar0`**: membership in the verified grammar ↔ the 15-line, plain-`Nat` `Grammar0.Derives` on the terminal string (see MiniCalc's `mini_language_eq`/`mini_accepts`) |
 
 ## The trusted base
@@ -44,7 +43,7 @@ proof-relevant form; the recognition faces are corollaries.
 1. **The Lean kernel** (and, only where an example explicitly opts in with
    `native_decide`, the Lean compiler — grep for `ofReduceBool` in `#print
    axioms` output to see who opted in).
-2. **The definitions in files 1–3 above** (~700 lines). If `ParseTree`/`ptSem`
+2. **The definitions in files 1–3 above** (~800 lines). If `ParseTree`/`ptSem`
    say what you mean by "derivation" and `parse`/`parseList` are what you run,
    the theorems mean what they say.
 3. **Your `Grammar0`** — reviewed by eye. The verified grammar is a
@@ -57,10 +56,11 @@ proof-relevant form; the recognition faces are corollaries.
 ## Explicitly *not* trusted
 
 - The LR(1)/SLR generator (`Generator/LR1.lean`, `BuildTables.lean`) and the
-  emitted `GenTables` blobs — certified after the fact by the validators and the
-  grammar cross-check.
-- The boolean validator kernels (`isSafe`, `isComplete`, `tablesMatchGrammar`,
-  `isEofAnchored`) — they only *produce* certificates; their soundness lemmas
+  emitted `GenTables` blobs — certified after the fact by the validators; the
+  *grammar* half is never taken from the tables at all (it is a definitional
+  function of your `Grammar0`, see trusted-base item 3).
+- The boolean validator kernels (`isSafe`, `isComplete`, `isEofAnchored`,
+  `Grammar0.wf`) — they only *produce* certificates; their soundness lemmas
   (`safe_is_validator`, …) are proved.
 - All proof files (`Correctness/Sound.lean`, `Correctness/CompleteProof.lean`,
   `Correctness/Congr.lean`, `Correctness/{Safe,Complete}*`, `Anchored.lean`) — 2000+ lines you
@@ -70,7 +70,7 @@ proof-relevant form; the recognition faces are corollaries.
 
 | Example | Certificates | Trust |
 |---|---|---|
-| `MiniCalc` | `decide` (safety, completeness, grammar match, EOF anchoring) | kernel only |
+| `MiniCalc` | `decide` (safety, completeness, EOF anchoring, `Grammar0.WF`) | kernel only |
 | `CalcTemplate`, `StmCalc`, `ScaleTest` | `rfl` (BTree-backed tables) | kernel only |
 | `Arith` | `native_decide` (`buildTablesSLR` is a `partial def`, not kernel-reducible) | kernel + compiler |
 

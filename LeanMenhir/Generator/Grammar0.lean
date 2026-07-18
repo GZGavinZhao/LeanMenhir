@@ -1,11 +1,8 @@
 /-
 `Grammar0` — the human-written grammar entrypoint — and its **definitional**
-interpretation as a verified `Grammar` (the D9 data-flow reversal).
+interpretation as a verified `Grammar`.
 
-Before this file, the grammar half of the verified `Grammar` was reconstructed
-from the *untrusted generated tables* (`GenTables`), and a decidable
-cross-check (`tablesMatchGrammar`, leak-2) tied it back to the `Grammar0` a
-human reviews. Now the flow is reversed:
+The data flow keeps the grammar half trusted-by-construction:
 
 * `Grammar0.toGrammar` / `Grammar0.toGrammarTyped` build the `Grammar` **as a
   definitional function of `g0`** (plus the user's semantic types/actions) — so

@@ -43,7 +43,7 @@ silent regression.
 ```
 LeanMenhir/
   Spec/          grammar/language/input definitions
-    Alphabet.lean    Comparable / Enumerable / Alphabet typeclasses
+    Alphabet.lean    Alphabet / Enumerable typeclasses (core `Ord` + `Std.TransOrd`/`Std.LawfulEqOrd`)
     Grammar.lean     symbols, the Grammar interface, dependently-typed ParseTree
     Language.lean    Derives / `word ∈ language nt` (existence of a derivation)
     Buffer.lean      O(1) head/tail token buffer and its denotation `get`
